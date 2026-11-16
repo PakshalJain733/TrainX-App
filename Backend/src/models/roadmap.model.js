@@ -1,0 +1,707 @@
+import { query } from '../config/db.js';
+
+const mockRoadmaps = new Map();
+
+/**
+ * Fetch a student's active roadmap with all milestone items
+ * Returns null when the student has no roadmap. DB errors propagate to the caller.
+ */
+const formatRoadmapResult = (roadmap, items) => ({
+  id: roadmap.id,
+  studentId: roadmap.student_id,
+  targetRole: roadmap.target_role,
+  careerTrack: roadmap.career_track,
+  updatedAt: roadmap.updated_at || roadmap.created_at,
+  milestones: items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    desc: item.description,
+    status: item.status,
+    progress: item.progress || 0,
+    tags: typeof item.tags === 'string' ? JSON.parse(item.tags) : (item.tags || []),
+    topics: typeof item.topics === 'string' ? JSON.parse(item.topics) : (item.topics || []),
+    syllabus: typeof item.syllabus === 'string' ? JSON.parse(item.syllabus) : (item.syllabus || []),
+    videos: typeof item.videos === 'string' ? JSON.parse(item.videos) : (item.videos || []),
+    resources: typeof item.resources === 'string' ? JSON.parse(item.resources) : (item.resources || []),
+    completedTopics: typeof item.completed_topics === 'string' ? JSON.parse(item.completed_topics) : (item.completed_topics || []),
+    quizzes: item.quizzes || 0,
+    exercises: item.exercises || 0,
+  })),
+});
+
+/**
+ * Fetch the student's most recently accessed roadmap (any role)
+ */
+export const getRoadmapByStudentId = async (studentId) => {
+  const sId = Number(studentId);
+
+  try {
+    const roadmaps = await query(
+      'SELECT * FROM roadmaps WHERE student_id = ? ORDER BY updated_at DESC LIMIT 1',
+      [sId]
+    );
+
+    if (roadmaps && roadmaps.length > 0) {
+      const roadmap = roadmaps[0];
+      const items = await query(
+        'SELECT * FROM roadmap_items WHERE roadmap_id = ? ORDER BY sequence_order ASC',
+        [roadmap.id]
+      );
+      return formatRoadmapResult(roadmap, items);
+    }
+  } catch (error) {
+    console.warn(`[Roadmap Model] DB lookup warning: ${error.message}. Using mock store.`);
+  }
+
+  return mockRoadmaps.get(sId) || null;
+};
+
+/**
+ * Fetch all saved roadmaps for a student
+ */
+export const getAllRoadmapsByStudentId = async (studentId) => {
+  const sId = Number(studentId);
+
+  try {
+    const roadmaps = await query(
+      'SELECT * FROM roadmaps WHERE student_id = ? ORDER BY updated_at DESC',
+      [sId]
+    );
+
+    if (roadmaps && roadmaps.length > 0) {
+      const results = [];
+      for (const r of roadmaps) {
+        const items = await query(
+          'SELECT * FROM roadmap_items WHERE roadmap_id = ? ORDER BY sequence_order ASC',
+          [r.id]
+        );
+        results.push(formatRoadmapResult(r, items));
+      }
+      return results;
+    }
+  } catch (error) {
+    console.warn(`[Roadmap Model] DB lookup all warning: ${error.message}.`);
+  }
+
+  const mockList = [];
+  for (const [key, val] of mockRoadmaps.entries()) {
+    if (typeof key === 'string' && key.startsWith(`${sId}__`) && val && val.targetRole) {
+      mockList.push(val);
+    }
+  }
+  if (mockList.length > 0) return mockList;
+  const single = mockRoadmaps.get(sId);
+  return single ? [single] : [];
+};
+
+/**
+ * Fetch a student's roadmap for a specific target role (preserves progress per topic)
+ */
+export const getRoadmapByStudentAndRole = async (studentId, targetRole) => {
+  const sId = Number(studentId);
+  const normalizedRole = String(targetRole || '').trim().toLowerCase();
+  if (!normalizedRole) return null;
+
+  try {
+    let roadmaps = await query(
+      'SELECT * FROM roadmaps WHERE student_id = ? AND LOWER(target_role) = ? ORDER BY updated_at DESC LIMIT 1',
+      [sId, normalizedRole]
+    );
+
+    if (!roadmaps || roadmaps.length === 0) {
+      // Partial fallback match (e.g. "java" matching "java fullstack developer")
+      roadmaps = await query(
+        'SELECT * FROM roadmaps WHERE student_id = ? AND (LOWER(target_role) LIKE ? OR ? LIKE CONCAT("%", LOWER(target_role), "%")) ORDER BY updated_at DESC LIMIT 1',
+        [sId, `%${normalizedRole}%`, normalizedRole]
+      );
+    }
+
+    if (roadmaps && roadmaps.length > 0) {
+      const roadmap = roadmaps[0];
+      const items = await query(
+        'SELECT * FROM roadmap_items WHERE roadmap_id = ? ORDER BY sequence_order ASC',
+        [roadmap.id]
+      );
+      return formatRoadmapResult(roadmap, items);
+    }
+  } catch (error) {
+    console.warn(`[Roadmap Model] DB role lookup warning: ${error.message}.`);
+  }
+
+  // Check in-memory mock store keyed by studentId+role
+  const mockKey = `${sId}__${normalizedRole}`;
+  if (mockRoadmaps.has(mockKey)) return mockRoadmaps.get(mockKey);
+
+  // Partial search in mock store
+  for (const [key, value] of mockRoadmaps.entries()) {
+    if (typeof key === 'string' && key.startsWith(`${sId}__`)) {
+      const storedRole = key.split('__')[1] || '';
+      if (storedRole.includes(normalizedRole) || normalizedRole.includes(storedRole)) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Save or overwrite a student's AI generated roadmap
+ */
+export const saveRoadmap = async (studentId, targetRole, careerTrackName, milestones) => {
+  const sId = Number(studentId);
+  const normalizedRole = String(targetRole || '').trim().toLowerCase();
+
+  try {
+    // Only delete the roadmap for this specific role — preserve other topics' progress
+    const existing = await query(
+      'SELECT id FROM roadmaps WHERE student_id = ? AND LOWER(target_role) = ?',
+      [sId, normalizedRole]
+    );
+    if (existing && existing.length > 0) {
+      for (const r of existing) {
+        await query('DELETE FROM roadmap_items WHERE roadmap_id = ?', [r.id]);
+      }
+      await query(
+        'DELETE FROM roadmaps WHERE student_id = ? AND LOWER(target_role) = ?',
+        [sId, normalizedRole]
+      );
+    }
+
+    const res = await query(
+      'INSERT INTO roadmaps (student_id, target_role, career_track, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
+      [sId, targetRole, careerTrackName]
+    );
+
+    if (res && res.insertId) {
+      const roadmapId = res.insertId;
+      const insertedItems = [];
+
+      for (let i = 0; i < milestones.length; i++) {
+        const m = milestones[i];
+        const tagsJson = JSON.stringify(m.tags || []);
+        const topicsJson = JSON.stringify(m.topics || []);
+        const syllabusJson = JSON.stringify(m.syllabus || []);
+        const resourcesJson = JSON.stringify(m.resources || []);
+
+        const itemRes = await query(
+          'INSERT INTO roadmap_items (roadmap_id, sequence_order, title, description, status, progress, tags, topics, quizzes, exercises, syllabus, resources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [roadmapId, i + 1, m.title, m.desc, m.status, m.progress || 0, tagsJson, topicsJson, m.quizzes || 0, m.exercises || 0, syllabusJson, resourcesJson]
+        );
+
+        insertedItems.push({
+          id: itemRes.insertId || i + 1,
+          ...m,
+        });
+      }
+
+      return {
+        id: roadmapId,
+        studentId: sId,
+        targetRole,
+        careerTrack: careerTrackName,
+        updatedAt: new Date(),
+        milestones: insertedItems,
+      };
+    }
+  } catch (error) {
+    console.warn(`[Roadmap Model] DB save warning: ${error.message}. Saving to mock store.`);
+  }
+
+  // Mock store fallback — keyed by studentId + normalizedRole to isolate per-topic progress
+  const mockId = Date.now();
+  const formattedMilestones = milestones.map((m, idx) => ({
+    id: m.id || idx + 1,
+    title: m.title,
+    desc: m.desc,
+    status: m.status,
+    progress: m.progress || 0,
+    tags: m.tags || [],
+    topics: m.topics || [],
+    syllabus: m.syllabus || [],
+    videos: m.videos || [],
+    resources: m.resources || [],
+    quizzes: m.quizzes || 0,
+    exercises: m.exercises || 0,
+  }));
+
+  const mockData = {
+    id: mockId,
+    studentId: sId,
+    targetRole,
+    careerTrack: careerTrackName,
+    updatedAt: new Date(),
+    milestones: formattedMilestones,
+  };
+
+  const mockKey = `${sId}__${normalizedRole}`;
+  mockRoadmaps.set(mockKey, mockData);
+  // Also update the "latest" key for the default GET
+  mockRoadmaps.set(sId, mockData);
+  return mockData;
+};
+
+/**
+ * Update milestone status & progress (supports direct DB item id or student sequence order)
+ */
+export const updateMilestoneItemStatus = async (studentId, itemId, status, progress, completedTopics) => {
+  const sId = Number(studentId);
+  const itId = Number(itemId);
+  const numProgress = typeof progress === 'number' ? progress : (status === 'completed' ? 100 : 0);
+
+  try {
+    const completedJson = completedTopics ? JSON.stringify(completedTopics) : null;
+    let res;
+
+    // 1. Try updating by direct primary key id
+    if (!isNaN(itId) && itId > 0) {
+      if (completedJson !== null) {
+        res = await query(
+          'UPDATE roadmap_items SET status = ?, progress = ?, completed_topics = ? WHERE id = ?',
+          [status, numProgress, completedJson, itId]
+        );
+      } else {
+        res = await query(
+          'UPDATE roadmap_items SET status = ?, progress = ? WHERE id = ?',
+          [status, numProgress, itId]
+        );
+      }
+    }
+
+    // 2. If not matched, try by sequence_order on the student's active roadmap
+    if (!res || res.affectedRows === 0) {
+      const activeRm = await query(
+        'SELECT id FROM roadmaps WHERE student_id = ? ORDER BY updated_at DESC LIMIT 1',
+        [sId]
+      );
+      if (activeRm && activeRm.length > 0) {
+        const rId = activeRm[0].id;
+        const seq = !isNaN(itId) && itId > 0 && itId <= 20 ? itId : 1;
+        if (completedJson !== null) {
+          res = await query(
+            'UPDATE roadmap_items SET status = ?, progress = ?, completed_topics = ? WHERE roadmap_id = ? AND sequence_order = ?',
+            [status, numProgress, completedJson, rId, seq]
+          );
+        } else {
+          res = await query(
+            'UPDATE roadmap_items SET status = ?, progress = ? WHERE roadmap_id = ? AND sequence_order = ?',
+            [status, numProgress, rId, seq]
+          );
+        }
+
+        // When milestone is completed, unlock the subsequent milestone in DB
+        if (status === 'completed') {
+          await query(
+            'UPDATE roadmap_items SET status = "in-progress" WHERE roadmap_id = ? AND sequence_order = ? AND status = "locked"',
+            [rId, seq + 1]
+          );
+        }
+
+        await query('UPDATE roadmaps SET updated_at = NOW() WHERE id = ?', [rId]);
+      }
+    } else {
+      // Direct item ID updated successfully — touch parent roadmap and unlock next milestone
+      const itemRow = await query('SELECT roadmap_id, sequence_order FROM roadmap_items WHERE id = ?', [itId]);
+      if (itemRow && itemRow.length > 0) {
+        const { roadmap_id, sequence_order } = itemRow[0];
+        await query('UPDATE roadmaps SET updated_at = NOW() WHERE id = ?', [roadmap_id]);
+        if (status === 'completed') {
+          await query(
+            'UPDATE roadmap_items SET status = "in-progress" WHERE roadmap_id = ? AND sequence_order = ? AND status = "locked"',
+            [roadmap_id, sequence_order + 1]
+          );
+        }
+      }
+    }
+
+    if (res && res.affectedRows > 0) {
+      return getRoadmapByStudentId(sId);
+    }
+  } catch (error) {
+    console.warn(`[Roadmap Model] DB update status warning: ${error.message}. Updating mock store.`);
+  }
+
+  const mockData = mockRoadmaps.get(sId);
+  if (mockData && mockData.milestones) {
+    const item = mockData.milestones.find((m) => Number(m.id) === itId || m.id === itemId);
+    if (item) {
+      item.status = status;
+      if (progress !== undefined) item.progress = numProgress;
+      if (completedTopics !== undefined) item.completedTopics = completedTopics;
+    }
+    return mockData;
+  }
+
+  return null;
+};
+
+/**
+ * Update the entire roadmap's progress and all milestone states in DB
+ */
+export const updateFullRoadmapProgress = async (studentId, roadmapId, milestones = []) => {
+  const sId = Number(studentId);
+  const rId = Number(roadmapId);
+
+  try {
+    let targetRoadmapId = !isNaN(rId) && rId > 0 ? rId : null;
+    if (!targetRoadmapId) {
+      const rm = await query(
+        'SELECT id FROM roadmaps WHERE student_id = ? ORDER BY updated_at DESC LIMIT 1',
+        [sId]
+      );
+      if (rm && rm.length > 0) {
+        targetRoadmapId = rm[0].id;
+      }
+    }
+
+    if (targetRoadmapId) {
+      for (let i = 0; i < milestones.length; i++) {
+        const m = milestones[i];
+        const mProgress = typeof m.progress === 'number' ? m.progress : (m.status === 'completed' ? 100 : 0);
+        const mStatus = m.status || (mProgress === 100 ? 'completed' : 'locked');
+        const completedJson = m.completedTopics ? JSON.stringify(m.completedTopics) : null;
+
+        let updated = false;
+        if (m.id && !isNaN(Number(m.id)) && Number(m.id) > 0) {
+          const res = await query(
+            'UPDATE roadmap_items SET status = ?, progress = ?' + (completedJson ? ', completed_topics = ?' : '') + ' WHERE id = ? AND roadmap_id = ?',
+            completedJson ? [mStatus, mProgress, completedJson, Number(m.id), targetRoadmapId] : [mStatus, mProgress, Number(m.id), targetRoadmapId]
+          );
+          if (res && res.affectedRows > 0) {
+            updated = true;
+          }
+        }
+
+        if (!updated) {
+          const seqOrder = i + 1;
+          await query(
+            'UPDATE roadmap_items SET status = ?, progress = ?' + (completedJson ? ', completed_topics = ?' : '') + ' WHERE roadmap_id = ? AND sequence_order = ?',
+            completedJson ? [mStatus, mProgress, completedJson, targetRoadmapId, seqOrder] : [mStatus, mProgress, targetRoadmapId, seqOrder]
+          );
+        }
+      }
+
+      await query('UPDATE roadmaps SET updated_at = NOW() WHERE id = ?', [targetRoadmapId]);
+
+      const refreshedItems = await query(
+        'SELECT * FROM roadmap_items WHERE roadmap_id = ? ORDER BY sequence_order ASC',
+        [targetRoadmapId]
+      );
+      const parentRoadmap = await query('SELECT * FROM roadmaps WHERE id = ?', [targetRoadmapId]);
+      if (parentRoadmap && parentRoadmap.length > 0) {
+        return formatRoadmapResult(parentRoadmap[0], refreshedItems);
+      }
+    }
+  } catch (err) {
+    console.warn(`[Roadmap Model] Error in updateFullRoadmapProgress: ${err.message}`);
+  }
+
+  // Update in-memory mock store
+  const mockData = mockRoadmaps.get(sId);
+  if (mockData) {
+    mockData.milestones = milestones;
+    mockData.updatedAt = new Date();
+    mockRoadmaps.set(sId, mockData);
+    if (mockData.targetRole) {
+      mockRoadmaps.set(`${sId}__${mockData.targetRole.trim().toLowerCase()}`, mockData);
+    }
+    return mockData;
+  }
+
+  return null;
+};
+
+const globalQuizCache = new Map();
+
+/**
+ * Find ANY existing AI roadmap for a target role across ALL students in DB or memory cache.
+ */
+export const getGlobalCachedRoadmap = async (targetRole) => {
+  const normalizedRole = String(targetRole || '').trim().toLowerCase();
+  if (!normalizedRole) return null;
+
+  try {
+    const roadmaps = await query(
+      'SELECT * FROM roadmaps WHERE LOWER(target_role) = ? ORDER BY updated_at DESC LIMIT 1',
+      [normalizedRole]
+    );
+    if (roadmaps && roadmaps.length > 0) {
+      const roadmap = roadmaps[0];
+      const items = await query(
+        'SELECT * FROM roadmap_items WHERE roadmap_id = ? ORDER BY sequence_order ASC',
+        [roadmap.id]
+      );
+      if (items && items.length > 0) {
+        return formatRoadmapResult(roadmap, items);
+      }
+    }
+  } catch (err) {
+    console.warn(`[Roadmap Model] Global DB lookup warning: ${err.message}`);
+  }
+
+  // Search in-memory mock store across all keys
+  for (const [key, value] of mockRoadmaps.entries()) {
+    if (typeof key === 'string' && key.includes('__')) {
+      const storedRole = key.split('__')[1] || '';
+      if (storedRole === normalizedRole && value && value.milestones && value.milestones.length > 0) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Ensure ai_topic_quizzes table exists for storing AI topic quizzes
+ */
+let isQuizTableChecked = false;
+const ensureQuizTable = async () => {
+  if (isQuizTableChecked) return;
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS ai_topic_quizzes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        topic_title VARCHAR(255) NOT NULL UNIQUE,
+        questions JSON NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    isQuizTableChecked = true;
+  } catch (err) {
+    console.warn(`[Roadmap Model] Could not ensure ai_topic_quizzes table: ${err.message}`);
+  }
+};
+
+/**
+ * Fetch cached AI quiz for a topic from DB or Memory Cache
+ */
+export const getCachedTopicQuiz = async (topicTitle) => {
+  const normalizedTopic = String(topicTitle || '').trim().toLowerCase();
+  if (!normalizedTopic) return null;
+
+  // 1. Check in-memory Map cache
+  if (globalQuizCache.has(normalizedTopic)) {
+    return globalQuizCache.get(normalizedTopic);
+  }
+
+  // 2. Check Database table
+  try {
+    await ensureQuizTable();
+    const rows = await query(
+      'SELECT topic_title, questions FROM ai_topic_quizzes WHERE LOWER(topic_title) = ? LIMIT 1',
+      [normalizedTopic]
+    );
+
+    if (rows && rows.length > 0) {
+      const row = rows[0];
+      const questions = typeof row.questions === 'string' ? JSON.parse(row.questions) : row.questions;
+      if (Array.isArray(questions) && questions.length >= 5) {
+        const quizData = {
+          topic: row.topic_title || topicTitle,
+          questions,
+          fromCache: true,
+        };
+        globalQuizCache.set(normalizedTopic, quizData);
+        return quizData;
+      }
+    }
+  } catch (err) {
+    console.warn(`[Roadmap Model] Quiz DB cache lookup warning: ${err.message}`);
+  }
+
+  return null;
+};
+
+/**
+ * Save AI generated quiz into DB and Memory Cache
+ */
+export const saveCachedTopicQuiz = async (topicTitle, quizData) => {
+  const cleanTitle = String(topicTitle || quizData?.topic || '').trim();
+  const normalizedTopic = cleanTitle.toLowerCase();
+  if (!cleanTitle || !quizData || !Array.isArray(quizData.questions)) return;
+
+  const cachePayload = {
+    topic: cleanTitle,
+    questions: quizData.questions,
+    fromCache: true,
+  };
+
+  // 1. Save to in-memory cache
+  globalQuizCache.set(normalizedTopic, cachePayload);
+
+  // 2. Save to Database
+  try {
+    await ensureQuizTable();
+    const questionsJson = JSON.stringify(quizData.questions);
+    await query(
+      `INSERT INTO ai_topic_quizzes (topic_title, questions, created_at)
+       VALUES (?, ?, NOW())
+       ON DUPLICATE KEY UPDATE questions = VALUES(questions)`,
+      [cleanTitle, questionsJson]
+    );
+    console.log(`[Roadmap Model] Saved AI quiz for topic "${cleanTitle}" to database.`);
+  } catch (err) {
+    console.warn(`[Roadmap Model] Quiz DB cache save warning: ${err.message}`);
+  }
+};
+
+const globalTheoryCache = new Map();
+let isTheoryTableChecked = false;
+
+const ensureTheoryTable = async () => {
+  if (isTheoryTableChecked) return;
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS ai_milestone_theories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        theory_key VARCHAR(255) NOT NULL UNIQUE,
+        theory_json JSON NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    isTheoryTableChecked = true;
+  } catch (err) {
+    console.warn(`[Roadmap Model] Could not ensure ai_milestone_theories table: ${err.message}`);
+  }
+};
+
+/**
+ * Fetch cached AI theory guide for a milestone topic
+ */
+export const getCachedMilestoneTheory = async (milestoneTitle, targetRole = '') => {
+  const cleanTitle = String(milestoneTitle || '').replace(/^Milestone\s*\d+\s*:\s*/i, '').trim().toLowerCase();
+  const cleanRole = String(targetRole || '').trim().toLowerCase();
+  const key = `${cleanTitle}__${cleanRole}`;
+  if (!cleanTitle) return null;
+
+  if (globalTheoryCache.has(key)) {
+    return globalTheoryCache.get(key);
+  }
+
+  try {
+    await ensureTheoryTable();
+    const rows = await query(
+      'SELECT theory_json FROM ai_milestone_theories WHERE theory_key = ? LIMIT 1',
+      [key]
+    );
+    if (rows && rows.length > 0) {
+      const data = typeof rows[0].theory_json === 'string' ? JSON.parse(rows[0].theory_json) : rows[0].theory_json;
+      if (data && data.title && Array.isArray(data.sections) && data.sections.some(s => Array.isArray(s.points) && s.points.length > 0)) {
+        globalTheoryCache.set(key, data);
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn(`[Roadmap Model] Theory DB cache lookup warning: ${err.message}`);
+  }
+
+  return null;
+};
+
+/**
+ * Save AI generated theory guide into DB and Memory Cache
+ */
+export const saveCachedMilestoneTheory = async (milestoneTitle, targetRole, theoryData) => {
+  const cleanTitle = String(milestoneTitle || '').replace(/^Milestone\s*\d+\s*:\s*/i, '').trim().toLowerCase();
+  const cleanRole = String(targetRole || '').trim().toLowerCase();
+  const key = `${cleanTitle}__${cleanRole}`;
+  if (!cleanTitle || !theoryData || !Array.isArray(theoryData.sections)) return;
+
+  globalTheoryCache.set(key, theoryData);
+
+  try {
+    await ensureTheoryTable();
+    const theoryJson = JSON.stringify(theoryData);
+    await query(
+      `INSERT INTO ai_milestone_theories (theory_key, theory_json, created_at)
+       VALUES (?, ?, NOW())
+       ON DUPLICATE KEY UPDATE theory_json = VALUES(theory_json)`,
+      [key, theoryJson]
+    );
+    console.log(`[Roadmap Model] Saved AI theory for "${cleanTitle}" to database.`);
+  } catch (err) {
+    console.warn(`[Roadmap Model] Theory DB cache save warning: ${err.message}`);
+  }
+};
+
+const globalPracticeCache = new Map();
+let isPracticeTableChecked = false;
+
+const ensurePracticeTable = async () => {
+  if (isPracticeTableChecked) return;
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS ai_milestone_practices (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        practice_key VARCHAR(255) NOT NULL UNIQUE,
+        practice_json JSON NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    isPracticeTableChecked = true;
+  } catch (err) {
+    console.warn(`[Roadmap Model] Could not ensure ai_milestone_practices table: ${err.message}`);
+  }
+};
+
+/**
+ * Fetch cached AI practice challenge for a milestone topic
+ */
+export const getCachedMilestonePractice = async (milestoneTitle, targetRole = '', topic = '') => {
+  const cleanTitle = String(milestoneTitle || '').replace(/^Milestone\s*\d+\s*:\s*/i, '').trim().toLowerCase();
+  const cleanRole = String(targetRole || '').trim().toLowerCase();
+  const cleanTopic = String(topic || cleanTitle).trim().toLowerCase();
+  const key = `${cleanTitle}__${cleanRole}__${cleanTopic}`;
+  if (!cleanTitle) return null;
+
+  if (globalPracticeCache.has(key)) {
+    return globalPracticeCache.get(key);
+  }
+
+  try {
+    await ensurePracticeTable();
+    const rows = await query(
+      'SELECT practice_json FROM ai_milestone_practices WHERE practice_key = ? LIMIT 1',
+      [key]
+    );
+    if (rows && rows.length > 0) {
+      const data = typeof rows[0].practice_json === 'string' ? JSON.parse(rows[0].practice_json) : rows[0].practice_json;
+      if (data && data.title && data.prompt) {
+        globalPracticeCache.set(key, data);
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn(`[Roadmap Model] Practice DB cache lookup warning: ${err.message}`);
+  }
+
+  return null;
+};
+
+/**
+ * Save AI generated practice challenge into DB and Memory Cache
+ */
+export const saveCachedMilestonePractice = async (milestoneTitle, targetRole, topic, practiceData) => {
+  const cleanTitle = String(milestoneTitle || '').replace(/^Milestone\s*\d+\s*:\s*/i, '').trim().toLowerCase();
+  const cleanRole = String(targetRole || '').trim().toLowerCase();
+  const cleanTopic = String(topic || cleanTitle).trim().toLowerCase();
+  const key = `${cleanTitle}__${cleanRole}__${cleanTopic}`;
+  if (!cleanTitle || !practiceData || !practiceData.title) return;
+
+  globalPracticeCache.set(key, practiceData);
+
+  try {
+    await ensurePracticeTable();
+    const practiceJson = JSON.stringify(practiceData);
+    await query(
+      `INSERT INTO ai_milestone_practices (practice_key, practice_json, created_at)
+       VALUES (?, ?, NOW())
+       ON DUPLICATE KEY UPDATE practice_json = VALUES(practice_json)`,
+      [key, practiceJson]
+    );
+    console.log(`[Roadmap Model] Saved AI practice challenge for "${cleanTopic}" to database.`);
+  } catch (err) {
+    console.warn(`[Roadmap Model] Practice DB cache save warning: ${err.message}`);
+  }
+};

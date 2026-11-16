@@ -1,0 +1,36 @@
+{
+  "name": "campus-training-portal",
+  "version": "1.0.0",
+  "description": "AI-Powered Campus Training Portal",
+  "main": "Backend/server.js",
+  "scripts": {
+    "dev": "npx concurrently \"npm run dev --prefix Frontend\" \"npm run dev --prefix Backend\"",
+    "start": "npm run start --prefix Backend",
+    "build": "npm run build --prefix Frontend",
+    "install:all": "npm install --prefix Frontend && npm install --prefix Backend",
+    "postinstall": "npm install --prefix Frontend && npm install --prefix Backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PakshalJain733/CAMPUS-TRAINING-PORTAL.git"
+  },
+  "keywords": [
+    "training-portal",
+    "campus-recruitment",
+    "ai-interview",
+    "coding-platform",
+    "lms"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/PakshalJain733/CAMPUS-TRAINING-PORTAL/issues"
+  },
+  "homepage": "https://github.com/PakshalJain733/CAMPUS-TRAINING-PORTAL#readme",
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0"
+  }
+}

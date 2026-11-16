@@ -1,0 +1,213 @@
+import React, { useState, useEffect, useRef } from "react";
+import { TrendingUp, LineChart, Users, ChevronDown, Check, Award } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/Card";
+import { Avatar, AvatarFallback } from "../../../components/ui/Avatar";
+import { apiFetch } from "../../../utils/api";
+import "../Styles/AD_Progress.css";
+
+import CustomSelect from "../../../components/ui/CustomSelect";
+
+/* ── Dropdown for Admin Progress ── */
+function AdminProgSelect(props) {
+  return <CustomSelect {...props} />;
+}
+
+import { getApiBaseUrl } from "../../../utils/api.js";
+
+const API_BASE = getApiBaseUrl();
+
+function getAuthHeaders() {
+  const token = (sessionStorage.getItem("token") || (sessionStorage.getItem("token") || sessionStorage.getItem("token"))) || "";
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+
+export default function AdminProgress() {
+  const [students, setStudents] = useState([]);
+  const [batches, setBatches] = useState([]);
+  const [selectedBatch, setSelectedBatch] = useState("All Batches");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      try {
+        const [studentsRes, batchesRes, interviewsRes, leaderboardRes] = await Promise.all([
+          apiFetch("/students").catch(() => null),
+          apiFetch("/batches").catch(() => null),
+          apiFetch("/interviews").catch(() => null),
+          apiFetch("/leaderboards/overall").catch(() => null),
+        ]);
+
+        if (batchesRes && (batchesRes.data || Array.isArray(batchesRes))) {
+          const bList = batchesRes.data || batchesRes;
+          if (Array.isArray(bList)) setBatches(bList);
+        }
+
+        const studentUsers = (studentsRes && (studentsRes.data || Array.isArray(studentsRes)))
+          ? (studentsRes.data || studentsRes)
+          : [];
+
+        const interviewData = (interviewsRes && (interviewsRes.data || Array.isArray(interviewsRes)))
+          ? (interviewsRes.data || interviewsRes)
+          : [];
+
+        const leaderboardData = (leaderboardRes && (leaderboardRes.data || Array.isArray(leaderboardRes)))
+          ? (leaderboardRes.data || leaderboardRes)
+          : [];
+
+        // Build a map of student ID / user_id / name to interview scores
+        const interviewMap = {};
+        if (Array.isArray(interviewData)) {
+          interviewData.forEach((iv) => {
+            const keyId = iv.user_id || iv.student_id;
+            const keyName = (iv.studentName || iv.name || "").toLowerCase().trim();
+            if (keyId) interviewMap[keyId] = Math.round(Number(iv.overall_score) || 0);
+            if (keyName) interviewMap[keyName] = Math.round(Number(iv.overall_score) || 0);
+          });
+        }
+
+        // Build a map for DB metrics, XP, and Coding Rank
+        const leaderboardMap = {};
+        if (Array.isArray(leaderboardData)) {
+          leaderboardData.forEach((lb) => {
+            const keyId = lb.id || lb.user_id || lb.student_id;
+            const keyName = (lb.name || "").toLowerCase().trim();
+            if (keyId) leaderboardMap[keyId] = lb;
+            if (keyName) leaderboardMap[keyName] = lb;
+          });
+        }
+
+        // Map student records with real database performance metrics
+        const mappedStudents = studentUsers.map((s, idx) => {
+          const keyId = s.id || s.user_id;
+          const keyName = (s.name || s.student_name || "").toLowerCase().trim();
+          const lb = leaderboardMap[keyId] || leaderboardMap[keyName] || {};
+
+          const quizAvg = typeof s.quizAvg === "number"
+            ? s.quizAvg
+            : Math.round(Number(lb.quiz_score || s.quiz_score) || 0);
+
+          const attendance = typeof s.attendancePct === "number"
+            ? s.attendancePct
+            : (typeof s.attendance === "number" ? s.attendance : Math.round(Number(lb.attendance_score || s.attendance_score) || 0));
+
+          const aiInterview = interviewMap[keyId] !== undefined
+            ? interviewMap[keyId]
+            : (interviewMap[keyName] !== undefined ? interviewMap[keyName] : Math.round(Number(lb.interview_score || s.interview_score) || 0));
+
+          const codingRank = lb.rank ? `#${lb.rank}` : "-";
+          const xp = Math.round(Number(lb.score || lb.overall_score || lb.points || s.xp) || 0);
+          const overallProgress = Math.round(Number(lb.overall_score) || Math.round((quizAvg * 0.3) + (attendance * 0.15) + (aiInterview * 0.25) + (Math.min(100, xp / 20) * 0.3)));
+
+          return {
+            id: s.id || s.user_id || idx,
+            name: s.name || s.student_name || "Student",
+            initials: s.name ? s.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'ST',
+            batch: s.batch || s.batch_name || 'General Batch',
+            quizAvg: quizAvg,
+            attendance: attendance,
+            aiInterview: aiInterview,
+            codingRank: codingRank,
+            xp: xp,
+            overallProgress: overallProgress,
+          };
+        });
+
+        setStudents(mappedStudents);
+      } catch (err) {
+        console.error("Failed to load student progress:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const filtered = selectedBatch === "All Batches" ? students : students.filter(s => s.batch === selectedBatch);
+
+  return (
+    <div className="admin-progress-container">
+      <div className="ui-section-header-AD">
+        <div className="ui-section-main-AD">
+          <div>
+            <h2 className="ui-section-title">
+              <LineChart size={22} className="ui-section-title-icon" />
+              <span>Student Progress & Assessment Performance</span>
+            </h2>
+            <p className="ui-section-desc">
+              Monitor student quiz scores, AI Mock Interview ratings, department metrics, and coordinator analytics.
+            </p>
+          </div>
+          <div className="ui-section-action">
+            <AdminProgSelect
+              value={selectedBatch}
+              onChange={setSelectedBatch}
+              options={[
+                { value: "All Batches", label: "All Batches" },
+                ...batches.map(b => ({ value: b.name, label: b.name }))
+              ]}
+            />
+          </div>
+        </div>
+      </div>
+
+      <Card className="progress-table-card">
+        <CardContent className="progress-table-body">
+          {loading ? (
+            <div style={{ padding: "32px", textAlign: "center", color: "#64748b" }}>Loading student progress analytics...</div>
+          ) : (
+            <table className="progress-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Batch</th>
+                  <th>Quiz Avg</th>
+                  <th>Attendance</th>
+                  <th>AI Interview</th>
+                  <th>Coding Rank</th>
+                  <th>XP Points</th>
+                  <th>Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="admin-table-empty-cell">
+                      No student progress records found in database.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map(s => (
+                    <tr key={s.id} className="progress-row">
+                      <td>
+                        <div className="progress-student-cell">
+                          <Avatar size="32"><AvatarFallback>{s.initials}</AvatarFallback></Avatar>
+                          <span className="progress-student-name">{s.name}</span>
+                        </div>
+                      </td>
+                      <td><span className="progress-batch-pill">{s.batch}</span></td>
+                      <td><span className={`progress-score ${s.quizAvg >= 85 ? "score-high" : s.quizAvg >= 70 ? "score-mid" : "score-low"}`}>{s.quizAvg}%</span></td>
+                      <td><span className={`progress-score ${s.attendance >= 90 ? "score-high" : s.attendance >= 75 ? "score-mid" : "score-low"}`}>{s.attendance}%</span></td>
+                      <td><span className={`progress-score ${s.aiInterview >= 80 ? "score-high" : s.aiInterview >= 65 ? "score-mid" : "score-low"}`}>{s.aiInterview}%</span></td>
+                      <td><span className="progress-rank">{s.codingRank.startsWith("#") ? s.codingRank : (s.codingRank === "-" ? "-" : `#${s.codingRank}`)}</span></td>
+                      <td><span className="progress-xp">{s.xp.toLocaleString()} XP</span></td>
+                      <td>
+                        <div className="progress-bar-wrap">
+                          <div className="progress-bar-fill" style={{ '--progress-fill': `${Math.min(100, Math.max(0, s.overallProgress))}%` }} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

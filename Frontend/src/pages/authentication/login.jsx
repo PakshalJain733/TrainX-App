@@ -1,0 +1,1292 @@
+import { useState, useRef, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import LogoMain from "../../assets/Logo.png";
+import Logo from "../../assets/Logo2.png";
+import TrainXLogo from "../../assets/TrainX.png";
+import { getApiBaseUrl, getAuthToken } from "../../utils/api";
+import { dashboardPathForRole, roleFromAccessToken } from "../../utils/authRole";
+import { useSystemMaintenance } from "../../context/SystemMaintenanceContext";
+
+import "./login.css";
+
+/* ── Reusable SVG icons ─────────────────────────────── */
+const Icons = {
+  email: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+    </svg>
+  ),
+  lock: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  ),
+  key: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m21 2-2 2m-1.5 1.5L14 9.5" />
+      <path d="M15.5 7.5 17 9" />
+      <circle cx="7.5" cy="16.5" r="5.5" />
+    </svg>
+  ),
+  send: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  ),
+  shield: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  ),
+  edit: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  ),
+  eye: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
+  eyeOff: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  ),
+  google: (
+    <svg width="18" height="18" viewBox="0 0 24 24">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+    </svg>
+  ),
+};
+
+/* ── Label with inline icon ─────────────────────────── */
+function FieldLabel({ icon, children, htmlFor }) {
+  return (
+    <label htmlFor={htmlFor} className="login-label-with-icon">
+      <span className="login-label-icon">{icon}</span>
+      <span className="login-label-text">{children}</span>
+    </label>
+  );
+}
+
+// ── Auth token storage helper ────────────────────────────
+// rememberMe=true  → localStorage   (persists across browser restarts)
+// rememberMe=false → sessionStorage (cleared when tab/browser closes)
+function storeAuthToken(token, remember) {
+  sessionStorage.setItem("token", token);
+  sessionStorage.setItem("authToken", token);
+  if (remember) {
+    localStorage.setItem("token", token);
+    localStorage.setItem("authToken", token);
+  } else {
+    localStorage.removeItem("token");
+    localStorage.removeItem("authToken");
+  }
+}
+
+function Login() {
+  const navigate = useNavigate();
+  const [authMode, setAuthMode] = useState("password"); // "password" | "otp" | "forgot"
+  const [step, setStep] = useState("email"); // "email" | "otp" | "new_password" | "authenticator"
+  const [email, setEmail] = useState(() => {
+    if (sessionStorage.getItem("tx_remember_me") !== "true") return "";
+    return sessionStorage.getItem("tx_remembered_identifier") || sessionStorage.getItem("tx_remembered_email") || "";
+  });
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(
+    () => sessionStorage.getItem("tx_remember_me") === "true"
+  );
+  // Preserve rememberMe across the 2FA / authenticator step
+  const rememberMeRef = useRef(rememberMe);
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  const [preAuthToken, setPreAuthToken] = useState(null);
+  const [totpSetupData, setTotpSetupData] = useState(null);
+  const [resendTimer, setResendTimer] = useState(0);
+  const inputRefs = useRef([]);
+
+  const API_BASE_URL = `${getApiBaseUrl()}/auth`;
+
+  useEffect(() => {
+    // Clear legacy sessionStorage credentials if any exist
+    sessionStorage.removeItem("tx_remember_me");
+    sessionStorage.removeItem("tx_remembered_email");
+    sessionStorage.removeItem("tx_remembered_password");
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("registered") === "true") {
+      setSuccessMsg("Registration and 2FA verified successfully! Please sign in with your email and password.");
+    }
+
+    try {
+      const storedUser = JSON.parse(sessionStorage.getItem("user") || "{}");
+      if (storedUser.remember_me || storedUser.rememberMe) {
+        setRememberMe(true);
+        if (storedUser.email) setEmail(storedUser.email);
+      }
+    } catch (_) { }
+
+    sessionStorage.removeItem("tx_remembered_password");
+
+  }, []);
+
+  const handleRememberMeChange = (checked) => {
+    setRememberMe(checked);
+    rememberMeRef.current = checked;
+    if (!checked) {
+      sessionStorage.removeItem("tx_remember_me");
+      sessionStorage.removeItem("tx_remembered_identifier");
+      sessionStorage.removeItem("tx_remembered_email");
+      sessionStorage.removeItem("tx_remembered_password");
+    }
+  };
+
+  const persistRememberedIdentifier = () => {
+    if (rememberMe) {
+      sessionStorage.setItem("tx_remember_me", "true");
+      sessionStorage.setItem("tx_remembered_identifier", email.trim());
+      sessionStorage.removeItem("tx_remembered_email");
+      sessionStorage.removeItem("tx_remembered_password");
+    } else {
+      sessionStorage.removeItem("tx_remember_me");
+      sessionStorage.removeItem("tx_remembered_identifier");
+      sessionStorage.removeItem("tx_remembered_email");
+      sessionStorage.removeItem("tx_remembered_password");
+    }
+
+  };
+
+  useEffect(() => {
+    let interval = null;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
+
+  const { isModuleActive, getModuleConfig } = useSystemMaintenance();
+  const passwordActive = isModuleActive("loginWithPassword");
+  const otpActive = isModuleActive("loginWithOTP");
+  const registrationActive = isModuleActive("userRegistration");
+  const passwordResetActive = isModuleActive("passwordReset");
+
+  useEffect(() => {
+    if (!passwordActive && otpActive && authMode === "password") {
+      setAuthMode("otp");
+    } else if (!otpActive && passwordActive && authMode === "otp") {
+      setAuthMode("password");
+    }
+  }, [passwordActive, otpActive, authMode]);
+
+  const handleModeSwitch = (mode) => {
+    if (mode === "password" && !passwordActive) {
+      setErrorMsg(getModuleConfig("loginWithPassword")?.message || "Password login is currently undergoing scheduled maintenance.");
+      return;
+    }
+    if (mode === "otp" && !otpActive) {
+      setErrorMsg(getModuleConfig("loginWithOTP")?.message || "Email OTP login is currently undergoing scheduled maintenance.");
+      return;
+    }
+    if (mode === "forgot" && !passwordResetActive) {
+      setErrorMsg(getModuleConfig("passwordReset")?.message || "Password recovery service is currently under maintenance.");
+      return;
+    }
+    setAuthMode(mode);
+    setErrorMsg("");
+    setSuccessMsg("");
+    setStep("email");
+    setOtp(["", "", "", "", "", ""]);
+    setNewPassword("");
+    setConfirmPassword("");
+    setPreAuthToken(null);
+  };
+
+  // Forgot-password OTP verify: do NOT call /verify-otp (login endpoint).
+  // Simply move to new_password step; the final reset step re-validates OTP.
+  const handleVerifyForgotOtp = (e) => {
+    e.preventDefault();
+    const enteredOtp = otp.join("");
+    if (enteredOtp.length < 6) {
+      setErrorMsg("Please enter the complete 6-digit OTP code.");
+      return;
+    }
+    // OTP digits are already in state; move straight to the new_password step.
+    // The /reset-password-otp endpoint will validate the OTP server-side.
+    setErrorMsg("");
+    setSuccessMsg("OTP accepted. Please set your new password below.");
+    setStep("new_password");
+  };
+
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    const fullOtp = otp.join("");
+    if (!newPassword || newPassword.length < 6) {
+      setErrorMsg("New password must be at least 6 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErrorMsg("Passwords do not match. Please verify.");
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/reset-password-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          otp: fullOtp,
+          newPassword,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setSuccessMsg("Password reset successfully! You can now log in with your new password.");
+        setTimeout(() => {
+          handleModeSwitch("password");
+        }, 2000);
+      } else {
+        setErrorMsg(data.message || "Failed to reset password. Please try again.");
+      }
+    } catch (err) {
+      console.error("Reset password error:", err);
+      setErrorMsg("Unable to connect to server. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+
+  const handlePostLoginRedirect = (serverUser) => {
+    let existingUser = {};
+    try {
+      existingUser = JSON.parse(sessionStorage.getItem("user") || localStorage.getItem("user") || "{}");
+    } catch {
+      sessionStorage.removeItem("user");
+      localStorage.removeItem("user");
+    }
+
+    let finalName = serverUser.name || existingUser.name;
+    if (!finalName || finalName.includes("@")) {
+      const email = serverUser.email || existingUser.email || "";
+      const src = (email && email.includes("@")) ? email.split("@")[0] : (finalName && finalName.includes("@") ? finalName.split("@")[0] : "");
+      if (src) {
+        finalName = src.replace(/[0-9_.-]+/g, " ").trim().split(" ").filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+      }
+    }
+    if (!finalName) finalName = "User";
+
+    const mergedUser = {
+      ...existingUser,
+      ...serverUser,
+      name: finalName,
+    };
+
+    if (!mergedUser.role) {
+      const jwtRole = roleFromAccessToken(getAuthToken());
+      if (jwtRole) mergedUser.role = jwtRole;
+    }
+
+    sessionStorage.setItem("user", JSON.stringify(mergedUser));
+    if (mergedUser.role) {
+      sessionStorage.setItem("role", String(mergedUser.role).toLowerCase());
+    }
+    if (rememberMeRef.current || rememberMe) {
+      localStorage.setItem("user", JSON.stringify(mergedUser));
+    } else {
+      localStorage.removeItem("user");
+    }
+
+    // Set flag for First Login Profile Update Alert
+    const userKey = mergedUser.id || mergedUser.email;
+
+    // Reset per-session skip flag on every login so students who skipped are prompted again
+    sessionStorage.removeItem("st_flash_skipped_session");
+    sessionStorage.removeItem("st_flash_skipped_current");
+    sessionStorage.removeItem("st_first_login_dismissed");
+    if (userKey) {
+      sessionStorage.removeItem(`st_flash_skipped_${userKey}`);
+      localStorage.removeItem(`st_flash_skipped_${userKey}`);
+    }
+    localStorage.removeItem("st_flash_skipped_current");
+
+    const hasRealDetails = Boolean(
+      (mergedUser.gender && mergedUser.city) ||
+      (mergedUser.studentProfile?.gender && mergedUser.studentProfile?.city) ||
+      (mergedUser.skills && String(mergedUser.skills).trim().length > 0) ||
+      (mergedUser.studentProfile?.skills && String(mergedUser.studentProfile?.skills).trim().length > 0) ||
+      (mergedUser.studentProfile?.emergency_contact && String(mergedUser.studentProfile?.emergency_contact).trim().length > 0) ||
+      (mergedUser.studentProfile?.target_track && String(mergedUser.studentProfile?.target_track).trim().length > 0)
+    );
+
+    const isUpdatedInStorage = Boolean(
+      userKey && (sessionStorage.getItem(`profile_updated_${userKey}`) === "true" || localStorage.getItem(`profile_updated_${userKey}`) === "true")
+    );
+
+    const isUpdatedOnServer = Boolean(
+      (mergedUser.is_profile_updated || mergedUser.studentProfile?.is_profile_updated) &&
+      hasRealDetails
+    );
+
+    if (isUpdatedOnServer || isUpdatedInStorage) {
+      if (userKey) {
+        sessionStorage.setItem(`profile_updated_${userKey}`, "true");
+        localStorage.setItem(`profile_updated_${userKey}`, "true");
+      }
+      sessionStorage.removeItem("showFirstLoginAlert");
+    } else {
+      if (userKey) {
+        sessionStorage.removeItem(`profile_updated_${userKey}`);
+        localStorage.removeItem(`profile_updated_${userKey}`);
+      }
+      sessionStorage.setItem("showFirstLoginAlert", "true");
+    }
+
+    navigate(dashboardPathForRole(mergedUser.role));
+  };
+
+  const beginAuthenticatorStep = (data) => {
+    const temporaryToken = data?.preAuthToken || data?.temporaryToken || data?.preauthToken;
+    if (!temporaryToken) return false;
+
+    // Snapshot rememberMe into a ref so it survives the step change
+    rememberMeRef.current = rememberMe;
+    setPreAuthToken(temporaryToken);
+    setStep("authenticator");
+    setSuccessMsg("Primary authentication verified. Enter the 6-digit code from Authenticator App.");
+    setOtp(["", "", "", "", "", ""]);
+    setTimeout(() => {
+      inputRefs.current[0]?.focus();
+    }, 100);
+    return true;
+  };
+
+  // ── Password Login Handler ─────────────────────────
+  const handlePasswordLogin = async (e) => {
+    e.preventDefault();
+    if (!passwordActive) {
+      setErrorMsg(getModuleConfig("loginWithPassword")?.message || "Password login is currently disabled for maintenance.");
+      return;
+    }
+    if (!email || !password) return;
+
+    persistRememberedIdentifier();
+    rememberMeRef.current = rememberMe;
+
+
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/login-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, rememberMe }),
+      });
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (jsonErr) {
+        console.warn("Non-JSON response received:", jsonErr);
+      }
+
+      if (!response.ok) {
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          setErrorMsg("Backend server is waking up or temporarily busy. Please wait a few moments and try again.");
+        } else {
+          setErrorMsg(data.message || `Server returned error (${response.status}). Please try again.`);
+        }
+        return;
+      }
+
+      if (data.success && data.data?.requiresTwoFactorSetup) {
+        setTotpSetupData(data.data);
+        setPreAuthToken(null);
+        setStep("authenticator_setup");
+        setOtp(["", "", "", "", "", ""]);
+      } else if (data.success && data.data?.requiresTwoFactor) {
+        // 2FA required — store pre-auth token only, NOT the final JWT
+        if (!beginAuthenticatorStep(data.data)) {
+          setPreAuthToken(null);
+          setErrorMsg("Two-factor verification could not be started. Please try again.");
+        }
+      } else if (data.success && data.data?.token) {
+        setPreAuthToken(null);
+        storeAuthToken(data.data.token, rememberMeRef.current);
+        handlePostLoginRedirect(data.data.user || {});
+      } else {
+        setErrorMsg(data.message || "Invalid credentials. Please check your email and password.");
+      }
+    } catch (err) {
+      console.error("Password login error:", err);
+      setErrorMsg("Unable to connect to server. Please check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── OTP Handlers ───────────────────────────────────
+  const handleSendOtp = async (e) => {
+    e.preventDefault();
+    if (!otpActive) {
+      setErrorMsg(getModuleConfig("loginWithOTP")?.message || "Email OTP delivery is currently disabled for maintenance.");
+      return;
+    }
+    if (!email) return;
+    persistRememberedIdentifier();
+    rememberMeRef.current = rememberMe;
+    setPreAuthToken(null);
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setStep("otp");
+        setSuccessMsg(data.message || `OTP sent to ${email}! Please check your email inbox.`);
+        setResendTimer(30);
+      } else {
+        setErrorMsg(data.message || "Failed to send OTP. Please try again.");
+      }
+    } catch (err) {
+      console.error("OTP send error:", err);
+      setErrorMsg("Unable to connect to server. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendTimer > 0 || loading) return;
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+    setOtp(["", "", "", "", "", ""]);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setSuccessMsg("A new OTP has been sent to your email!");
+        setResendTimer(30);
+      } else {
+        setErrorMsg(data.message || "Failed to resend OTP");
+      }
+    } catch (err) {
+      console.error("Resend OTP error:", err);
+      setErrorMsg("Unable to connect to server. Please try again.");
+    } finally {
+      setLoading(false);
+      inputRefs.current[0]?.focus();
+    }
+  };
+
+  const handleEditEmail = () => {
+    setStep("email");
+    setPreAuthToken(null);
+    setOtp(["", "", "", "", "", ""]);
+    setErrorMsg("");
+    setSuccessMsg("");
+  };
+
+  const handleOtpChange = (e, index) => {
+    const value = e.target.value;
+    const digitsOnly = value.replace(/\D/g, "");
+    if (!digitsOnly) {
+      const newOtp = [...otp];
+      newOtp[index] = "";
+      setOtp(newOtp);
+      return;
+    }
+
+    if (digitsOnly.length > 1) {
+      const pastedDigits = digitsOnly.slice(0, 6).split("");
+      const newOtp = [...otp];
+      pastedDigits.forEach((d, i) => {
+        if (index + i < 6) {
+          newOtp[index + i] = d;
+        }
+      });
+      setOtp(newOtp);
+      const nextFocus = Math.min(index + pastedDigits.length, 5);
+      inputRefs.current[nextFocus]?.focus();
+      return;
+    }
+
+    const newOtp = [...otp];
+    newOtp[index] = digitsOnly;
+    setOtp(newOtp);
+
+    if (digitsOnly && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (e, index) => {
+    if (e.key === "Backspace" && !otp[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerifyTotpSetupPairing = async (e) => {
+    e.preventDefault();
+    const enteredCode = otp.join("");
+    if (enteredCode.length < 6) {
+      setSuccessMsg("");
+      setErrorMsg("Please enter the complete 6-digit Authenticator code.");
+      return;
+    }
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const emailToVerify = (email || totpSetupData?.email || totpSetupData?.user?.email || "").trim();
+      const response = await fetch(`${API_BASE_URL}/verify-totp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: emailToVerify,
+          code: enteredCode,
+          rememberMe,
+        }),
+      });
+      const data = await response.json();
+      if (data.success && data.data?.token) {
+        storeAuthToken(data.data.token, rememberMeRef.current || rememberMe);
+        handlePostLoginRedirect(data.data.user || {});
+      } else if (data.success && data.data?.pendingApproval) {
+        setSuccessMsg(data.message || "2FA Setup completed! Your account is pending Admin approval.");
+        setTimeout(() => {
+          setStep("email");
+        }, 2000);
+      } else if (data.success) {
+        setSuccessMsg("2FA Setup completed successfully! Redirecting...");
+        setTimeout(() => {
+          if (data.data?.token) {
+            storeAuthToken(data.data.token, rememberMeRef.current || rememberMe);
+          }
+          handlePostLoginRedirect(data.data?.user || {});
+        }, 1200);
+      } else {
+        setErrorMsg(data.message || "Invalid Authenticator Code. Please check Google/Microsoft Authenticator app.");
+      }
+    } catch (err) {
+      console.error("2FA setup verification error:", err);
+      setErrorMsg("Unable to verify Authenticator code. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyAndLogin = async (e) => {
+    e.preventDefault();
+    const enteredOtp = otp.join("");
+    if (enteredOtp.length < 6) {
+      setSuccessMsg("");
+      setErrorMsg("Please enter the complete 6-digit code.");
+      return;
+    }
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const isAuthenticatorStep = step === "authenticator";
+      if (isAuthenticatorStep && !preAuthToken && !email) {
+        setErrorMsg("Your temporary authentication session expired. Please sign in again.");
+        setLoading(false);
+        return;
+      }
+
+      // Authenticator step → TOTP verify (final JWT issued here)
+      // OTP login step   → verify-otp (may return requiresTwoFactor instead of token)
+      const endpoint = isAuthenticatorStep
+        ? `${API_BASE_URL}/verify-totp`
+        : `${API_BASE_URL}/verify-otp`;
+      const requestBody = isAuthenticatorStep
+        ? { preAuthToken, email, code: enteredOtp }
+        : { identifier: email, otp: enteredOtp };
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...requestBody, rememberMe }),
+      });
+      const data = await response.json();
+      if (data.success && data.data?.requiresTwoFactor && !isAuthenticatorStep) {
+        if (!beginAuthenticatorStep(data.data)) {
+          setPreAuthToken(null);
+          setErrorMsg("Two-factor verification could not be started. Please try again.");
+        }
+      } else if (data.success && data.data?.token) {
+        const finalToken = data.data.token;
+        const finalUser = data.data.user || {};
+        setPreAuthToken(null);
+        storeAuthToken(finalToken, rememberMeRef.current || rememberMe);
+        handlePostLoginRedirect(finalUser);
+      } else {
+        setErrorMsg(data.message || (isAuthenticatorStep
+          ? "Invalid code from Google Authenticator. Please try again."
+          : "Invalid or expired OTP code."));
+      }
+    } catch (err) {
+      console.error("Login verification error:", err);
+      setErrorMsg("Unable to connect to server. Please check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-page">
+      {/* Background Shapes */}
+      <div className="login-bg-shape login-circle1"></div>
+      <div className="login-bg-shape login-circle2"></div>
+      <div className="login-bg-shape login-circle3"></div>
+      <div className="login-bg-shape login-circle4"></div>
+      <div className="login-bg-shape login-circle5"></div>
+      <div className="login-bg-shape login-circle6"></div>
+      <div className="login-bg-shape login-blob1"></div>
+      <div className="login-bg-shape login-blob2"></div>
+      <div className="login-bg-shape login-ring1"></div>
+      <div className="login-bg-shape login-ring2"></div>
+
+      <div className="login-wrapper-outer">
+        <div className="login-wrapper">
+          {/* Left Panel - Minimal Premium TrainX Logo Presentation */}
+          <div className="lp2-panel">
+            {/* Subtle Ambient Radial Glow */}
+            <div className="tx-ambient-radial-glow"></div>
+
+            {/* Minimal Floating Ambient Energy Particles */}
+            <div className="tx-micro-particle p1"></div>
+            <div className="tx-micro-particle p2"></div>
+            <div className="tx-micro-particle p3"></div>
+            <div className="tx-micro-particle p4"></div>
+            <div className="tx-micro-particle p5"></div>
+            <div className="tx-micro-particle p6"></div>
+
+            {/* Top Eyebrow Section */}
+            <div className="tx-hero-header">
+              <span className="tx-eyebrow-text">YOUR LEARNING JOURNEY</span>
+              <div className="tx-top-sparkle">✦</div>
+            </div>
+
+            {/* Center Stage — Minimal Premium Logo Creation Animation */}
+            <div className="tx-logo-reveal-stage">
+              <div className="tx-logo-glow-pulse"></div>
+
+              <div className="tx-logo-premium-canvas">
+                <img src={LogoMain} alt="TrainX Logo" className="tx-logo-main-img" />
+              </div>
+
+              {/* Typography Below Logo */}
+              <div className="tx-brand-text-block">
+                <h1 className="tx-brand-name-title">
+                  Train<span className="tx-accent-x">X</span>
+                </h1>
+                <p className="tx-slogan-text">Learn • Practice • Assess • Excel</p>
+              </div>
+            </div>
+
+            {/* Bottom Footer Section */}
+            <div className="tx-bottom-footer-bar">
+              <span className="tx-footer-tag">✦ Interactive Learning</span>
+              <span className="tx-footer-tag">✦ Smart Assessment</span>
+              <span className="tx-footer-tag">✦ Track Your Progress</span>
+            </div>
+          </div>
+
+
+          {/* Right Panel - Login Card */}
+          <div className="login-card">
+            {/* Mobile Top Header Banner (Matching Reference Image Layout) */}
+            <div className="mobile-login-top-banner">
+              <div className="mobile-banner-logo-wrap">
+                <img src={Logo} alt="Logo" className="mobile-banner-logo-img" />
+              </div>
+            </div>
+
+            <img src={Logo} alt="Logo" className="login-logo" />
+
+            {step === "email" && authMode !== "forgot" && (
+              <>
+                <div className="login-card-welcome-header">
+                  <p className="login-card-welcome-sub">Enter your credentials to access your account</p>
+                </div>
+
+                {/* Segmented Auth Mode Switcher */}
+                <div className="login-mode-segmented-bar">
+                  <button
+                    type="button"
+                    className={`login-mode-tab ${authMode === "password" ? "active" : ""}`}
+                    onClick={() => handleModeSwitch("password")}
+                  >
+                    {Icons.lock}
+                    <span>Password</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`login-mode-tab ${authMode === "otp" ? "active" : ""}`}
+                    onClick={() => handleModeSwitch("otp")}
+                  >
+                    {Icons.email}
+                    <span>Email code</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            {errorMsg ? (
+              <div className="auth-error-msg">{errorMsg}</div>
+            ) : successMsg ? (
+              <div className="auth-success-msg">{successMsg}</div>
+            ) : null}
+
+            {/* ═════════════════════════════════════════════════ */}
+            {/* MODE 1: PASSWORD LOGIN                            */}
+            {/* ═════════════════════════════════════════════════ */}
+            {authMode === "password" && (
+              <>
+                {step === "email" && (
+                  <form onSubmit={handlePasswordLogin}>
+                    <div className="login-input-group">
+                      <FieldLabel htmlFor="email" icon={Icons.email}>Email address *</FieldLabel>
+                      <input
+                        id="email"
+                        type="email"
+                        required
+                        autoComplete="username"
+                        placeholder="name@college.edu"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="login-input-group">
+                      <FieldLabel htmlFor="password" icon={Icons.lock}>Password *</FieldLabel>
+                      <div className="password-input-wrapper">
+                        <input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          required
+                          placeholder="Enter your password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="password-toggle-btn"
+                          onClick={() => setShowPassword(!showPassword)}
+                          tabIndex={-1}
+                        >
+                          {showPassword ? Icons.eyeOff : Icons.eye}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="login-options-row">
+                      <label htmlFor="remember-me" className="login-remember-label">
+                        <input
+                          type="checkbox"
+                          id="remember-me"
+                          checked={rememberMe}
+                          onChange={(e) => handleRememberMeChange(e.target.checked)}
+                        />
+                        <span>Remember Me</span>
+                      </label>
+                      <button type="button" className="forgot-password-link" onClick={() => handleModeSwitch("forgot")}>
+                        Forgot Password?
+                      </button>
+                    </div>
+
+                    <button type="submit" className="login-send-otp-btn" disabled={loading}>
+                      {loading ? "Authenticating..." : "Sign in"}
+                    </button>
+
+                    <div className="login-links">
+                      <p>
+                        Don&apos;t have an account?{" "}
+                        <Link className="login-registeration-link" to="/register">
+                          Create Account
+                        </Link>
+                      </p>
+                    </div>
+                  </form>
+                )}
+
+              </>
+            )}
+
+            {step === "authenticator_setup" && (
+              <form onSubmit={handleVerifyTotpSetupPairing}>
+                <div style={{ textAlign: "center", marginBottom: "14px" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#1e293b", margin: "0 0 6px 0" }}>
+                    Authenticator 2FA Setup
+                  </h3>
+                  <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>
+                    Scan the QR Code below using Microsoft or Google Authenticator app.
+                  </p>
+                </div>
+
+                {totpSetupData?.qrCode && (
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
+                    <img
+                      src={totpSetupData.qrCode}
+                      alt="2FA QR Code"
+                      style={{ width: "150px", height: "150px", borderRadius: "12px", border: "2px solid #e2e8f0", padding: "6px", background: "#fff" }}
+                    />
+                  </div>
+                )}
+
+                {totpSetupData?.secret && (
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", marginBottom: "14px", textAlign: "center" }}>
+                    <div style={{ fontSize: "11px", fontWeight: "600", color: "#64748b", marginBottom: "2px" }}>Secret Setup Key (Manual Entry):</div>
+                    <code style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a", letterSpacing: "1px" }}>{totpSetupData.secret}</code>
+                  </div>
+                )}
+
+                <div className="login-input-group">
+                  <FieldLabel icon={Icons.key}>Enter 6-Digit Code from App</FieldLabel>
+                  <div className="login-otp-input-row">
+                    {otp.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={(el) => (inputRefs.current[idx] = el)}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        className={`login-otp-digit-input ${digit ? "filled" : ""}`}
+                        onChange={(e) => handleOtpChange(e, idx)}
+                        onKeyDown={(e) => handleOtpKeyDown(e, idx)}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <button type="submit" className="login-send-otp-btn" style={{ marginTop: "12px" }} disabled={loading}>
+                  {Icons.shield} {loading ? "Verifying Setup..." : "Verify & Complete 2FA Setup"}
+                </button>
+
+                <div className="login-links">
+                  <p>
+                    <button
+                      type="button"
+                      onClick={handleEditEmail}
+                      className="login-registeration-link"
+                      style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer" }}
+                    >
+                      Back to Login
+                    </button>
+                  </p>
+                </div>
+              </form>
+            )}
+
+            {step === "authenticator" && (
+              <form onSubmit={handleVerifyAndLogin}>
+                <div className="login-input-group">
+                  <div className="login-email-header-row">
+                    <FieldLabel icon={Icons.shield}>Email Address</FieldLabel>
+                    <button
+                      type="button"
+                      onClick={handleEditEmail}
+                      className="login-edit-email-btn"
+                    >
+                      {Icons.edit} Edit
+                    </button>
+                  </div>
+
+                  <div className="login-email-display-card">
+                    <span className="login-email-display-text">{email || "your account"}</span>
+                  </div>
+                </div>
+
+                <div className="login-input-group">
+                  <FieldLabel icon={Icons.key}>Enter 6-Digit Code from App</FieldLabel>
+                  <div className="login-otp-input-row">
+                    {otp.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={(el) => (inputRefs.current[idx] = el)}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        className={`login-otp-digit-input ${digit ? "filled" : ""}`}
+                        onChange={(e) => handleOtpChange(e, idx)}
+                        onKeyDown={(e) => handleOtpKeyDown(e, idx)}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <button type="submit" className="login-send-otp-btn" style={{ marginTop: "12px" }} disabled={loading}>
+                  {Icons.shield} {loading ? "Verifying..." : "Verify Authenticator & Login"}
+                </button>
+
+                <div className="login-links">
+                  <p>
+                    Wrong account?{" "}
+                    <button
+                      type="button"
+                      onClick={handleEditEmail}
+                      className="login-registeration-link"
+                      style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer" }}
+                    >
+                      Back to Login
+                    </button>
+                  </p>
+                </div>
+              </form>
+            )}
+
+            {/* ═════════════════════════════════════════════════ */}
+            {/* MODE 2: OTP LOGIN                                 */}
+            {/* ═════════════════════════════════════════════════ */}
+            {authMode === "otp" && (
+              <>
+                {step === "email" && (
+                  <form onSubmit={handleSendOtp}>
+                    <div className="login-input-group">
+                      <FieldLabel htmlFor="otp-email" icon={Icons.email}>Email Address</FieldLabel>
+                      <input
+                        id="otp-email"
+                        type="email"
+                        required
+                        autoComplete="username"
+                        placeholder="user@pvppcoe.ac.in"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="login-options-row">
+                      <label htmlFor="otp-remember-me" className="login-remember-label">
+                        <input
+                          type="checkbox"
+                          id="otp-remember-me"
+                          checked={rememberMe}
+                          onChange={(e) => handleRememberMeChange(e.target.checked)}
+                        />
+                        <span>Remember Me</span>
+                      </label>
+                    </div>
+
+                    <button type="submit" className="login-send-otp-btn" disabled={loading}>
+                      {Icons.send} {loading ? "Sending..." : "Send OTP"}
+                    </button>
+
+                    <div className="login-links">
+                      <p>
+                        Don&apos;t have an account?{" "}
+                        <Link className="login-registeration-link" to="/register">
+                          Create Account
+                        </Link>
+                      </p>
+                    </div>
+                  </form>
+                )}
+
+                {step === "otp" && (
+                  <form onSubmit={handleVerifyAndLogin}>
+                    <div className="login-input-group">
+                      <div className="login-email-header-row">
+                        <FieldLabel icon={Icons.email}>Code Sent To</FieldLabel>
+                        <button
+                          type="button"
+                          onClick={handleEditEmail}
+                          className="login-edit-email-btn"
+                        >
+                          {Icons.edit} Edit
+                        </button>
+                      </div>
+
+                      <div className="login-email-display-card">
+                        <span className="login-email-display-text">{email || "your account"}</span>
+                      </div>
+                    </div>
+
+                    {/* OTP Input Boxes */}
+                    <div className="login-input-group">
+                      <FieldLabel icon={Icons.key}>Enter 6-Digit OTP</FieldLabel>
+                      <div className="login-otp-input-row">
+                        {otp.map((digit, idx) => (
+                          <input
+                            key={idx}
+                            ref={(el) => (inputRefs.current[idx] = el)}
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={1}
+                            value={digit}
+                            className={`login-otp-digit-input ${digit ? "filled" : ""}`}
+                            onChange={(e) => handleOtpChange(e, idx)}
+                            onKeyDown={(e) => handleOtpKeyDown(e, idx)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Resend OTP */}
+                    <div className="login-resend-wrap">
+                      <span className="login-resend-text">Didn&apos;t receive OTP?</span>
+                      <button
+                        type="button"
+                        onClick={handleResendOtp}
+                        disabled={resendTimer > 0 || loading}
+                        className="login-resend-link-btn"
+                        style={{ opacity: resendTimer > 0 || loading ? 0.6 : 1, cursor: resendTimer > 0 || loading ? "not-allowed" : "pointer" }}
+                      >
+                        ↺ {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend OTP"}
+                      </button>
+                    </div>
+
+                    <button type="submit" className="login-send-otp-btn" disabled={loading}>
+                      {Icons.send} {loading ? "Verifying..." : "Verify & Login"}
+                    </button>
+
+                    <div className="login-links">
+                      <p>
+                        Don&apos;t have an account?{" "}
+                        <Link className="login-registeration-link" to="/register">
+                          Create Account
+                        </Link>
+                      </p>
+                    </div>
+                  </form>
+                )}
+              </>
+            )}
+            {/* ═════════════════════════════════════════════════ */}
+            {/* MODE 3: FORGOT / RESET PASSWORD (3-STEP FLOW)     */}
+            {/* ═════════════════════════════════════════════════ */}
+            {authMode === "forgot" && (
+              <>
+                {/* STEP 1: Enter Email */}
+                {step === "email" && (
+                  <form onSubmit={handleSendOtp}>
+                    <div className="login-input-group">
+                      <FieldLabel htmlFor="forgot-email" icon={Icons.email}>Registered Email Address</FieldLabel>
+                      <input
+                        id="forgot-email"
+                        type="email"
+                        required
+                        autoComplete="username"
+                        placeholder="user@pvppcoe.ac.in"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </div>
+
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "10px 0 16px", lineHeight: "1.4" }}>
+                      🔒 Enter your registered email address. We will send a 6-digit OTP to reset your password.
+                    </p>
+
+                    <button type="submit" className="login-send-otp-btn" disabled={loading}>
+                      {Icons.send} {loading ? "Sending OTP..." : "Send OTP"}
+                    </button>
+
+                    <div className="login-links">
+                      <p>
+                        Remembered password?{" "}
+                        <button
+                          type="button"
+                          onClick={() => handleModeSwitch("password")}
+                          className="login-registeration-link"
+                          style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer" }}
+                        >
+                          Back to Login
+                        </button>
+                      </p>
+                    </div>
+                  </form>
+                )}
+
+                {/* STEP 2: Enter & Verify 6-Digit OTP */}
+                {step === "otp" && (
+                  <form onSubmit={handleVerifyForgotOtp}>
+                    <div className="login-input-group">
+                      <div className="login-email-header-row">
+                        <FieldLabel icon={Icons.email}>OTP Sent To</FieldLabel>
+                        <button
+                          type="button"
+                          onClick={handleEditEmail}
+                          className="login-edit-email-btn"
+                        >
+                          {Icons.edit} Edit
+                        </button>
+                      </div>
+
+                      <div className="login-email-display-card">
+                        <span className="login-email-display-text">{email || "user@pvppcoe.ac.in"}</span>
+                      </div>
+                    </div>
+
+                    {/* 6-Digit OTP Input Boxes */}
+                    <div className="login-input-group">
+                      <FieldLabel icon={Icons.key}>Enter 6-Digit OTP</FieldLabel>
+                      <div className="login-otp-input-row">
+                        {otp.map((digit, idx) => (
+                          <input
+                            key={idx}
+                            ref={(el) => (inputRefs.current[idx] = el)}
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={1}
+                            value={digit}
+                            className={`login-otp-digit-input ${digit ? "filled" : ""}`}
+                            onChange={(e) => handleOtpChange(e, idx)}
+                            onKeyDown={(e) => handleOtpKeyDown(e, idx)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Resend OTP */}
+                    <div className="login-resend-wrap" style={{ marginTop: "12px" }}>
+                      <span className="login-resend-text">Didn&apos;t receive OTP?</span>
+                      <button
+                        type="button"
+                        onClick={handleResendOtp}
+                        disabled={resendTimer > 0 || loading}
+                        className="login-resend-link-btn"
+                        style={{ opacity: resendTimer > 0 || loading ? 0.6 : 1, cursor: resendTimer > 0 || loading ? "not-allowed" : "pointer" }}
+                      >
+                        ↺ {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend OTP"}
+                      </button>
+                    </div>
+
+                    <button type="submit" className="login-send-otp-btn" style={{ marginTop: "14px" }} disabled={loading}>
+                      {Icons.send} {loading ? "Verifying OTP..." : "Verify OTP"}
+                    </button>
+
+                    <div className="login-links">
+                      <p>
+                        Remembered password?{" "}
+                        <button
+                          type="button"
+                          onClick={() => handleModeSwitch("password")}
+                          className="login-registeration-link"
+                          style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer" }}
+                        >
+                          Back to Login
+                        </button>
+                      </p>
+                    </div>
+                  </form>
+                )}
+
+                {/* STEP 3: Enter New Password & Confirm */}
+                {step === "new_password" && (
+                  <form onSubmit={handleResetPasswordSubmit}>
+                    <div className="login-input-group">
+                      <div className="login-email-header-row">
+                        <FieldLabel icon={Icons.shield}>OTP Verified Account</FieldLabel>
+                      </div>
+                      <div className="login-email-display-card" style={{ borderColor: "#86efac", background: "#f0fdf4" }}>
+                        <span className="login-email-display-text" style={{ color: "#166534", fontWeight: "600" }}>✓ {email}</span>
+                      </div>
+                    </div>
+
+                    {/* New Password Input */}
+                    <div className="login-input-group" style={{ marginTop: "14px" }}>
+                      <FieldLabel htmlFor="new-password" icon={Icons.lock}>New Password *</FieldLabel>
+                      <div className="login-password-input-wrap">
+                        <input
+                          id="new-password"
+                          type={showPassword ? "text" : "password"}
+                          required
+                          placeholder="Min. 6 characters"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="password-toggle-btn"
+                          onClick={() => setShowPassword(!showPassword)}
+                          tabIndex={-1}
+                        >
+                          {showPassword ? Icons.eyeOff : Icons.eye}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Confirm New Password Input */}
+                    <div className="login-input-group">
+                      <FieldLabel htmlFor="confirm-new-password" icon={Icons.lock}>Confirm New Password *</FieldLabel>
+                      <div className="login-password-input-wrap">
+                        <input
+                          id="confirm-new-password"
+                          type={showPassword ? "text" : "password"}
+                          required
+                          placeholder="Re-enter new password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <button type="submit" className="login-send-otp-btn" style={{ marginTop: "16px" }} disabled={loading}>
+                      {Icons.key} {loading ? "Updating Password..." : "Update Password & Login"}
+                    </button>
+
+                    <div className="login-links">
+                      <p>
+                        Back to{" "}
+                        <button
+                          type="button"
+                          onClick={() => handleModeSwitch("password")}
+                          className="login-registeration-link"
+                          style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer" }}
+                        >
+                          Login
+                        </button>
+                      </p>
+                    </div>
+                  </form>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default Login;

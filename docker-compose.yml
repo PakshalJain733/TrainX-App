@@ -1,0 +1,16 @@
+services:
+  # Code Runner Sandbox Container Image Builder
+  code-runner:
+    build:
+      context: ./Backend/docker/compiler
+      dockerfile: Dockerfile
+    image: trainx-code-runner
+    container_name: trainx-code-runner
+    restart: "no"
+    entrypoint: ["echo", "trainx-code-runner sandbox image built successfully"]
+
+volumes: {}
+
+networks:
+  trainx-network:
+    driver: bridge

@@ -1,0 +1,741 @@
+import { useState, useEffect, useRef, Suspense } from "react";
+import { createPortal } from "react-dom";
+import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
+import { Bell, PanelLeft, UserCog, LogOut, CheckCheck, Trash2, Calendar, AlertTriangle, CheckCircle2, FileText, Check, ExternalLink, Key, Clock, User } from "lucide-react";
+import { StudentSidebar } from "./ST_Sidebar";
+import GlobalHeaderSearch from "../../../components/Common/GlobalHeaderSearch";
+import RouteLoadingFallback from "../../../components/Common/RouteLoadingFallback";
+import { apiFetch } from "../../../utils/api";
+import ChangePasswordModal from "../../../components/ui/ChangePasswordModal";
+import "../Styles/ST_Layout.css";
+
+import BroadcastToast from "../../../components/ui/BroadcastToast";
+import FullNotificationModal from "../../../components/ui/FullNotificationModal";
+import NotificationDetailModal from "../../../components/ui/NotificationDetailModal";
+import DesktopNotificationToggle from "../../../components/Common/DesktopNotificationToggle";
+import { getShortDept } from "../../../utils/departmentHelper";
+
+function NotificationDropdown({ onClose, onUnreadChange, onOpenViewAll, notifications, setNotifications, onSelectNotification }) {
+  const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState("all");
+
+  const autoCloseTimerRef = useRef(null);
+
+  const startAutoCloseTimer = () => {
+    if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+    autoCloseTimerRef.current = setTimeout(() => {
+      if (onClose) onClose();
+    }, 5000);
+  };
+
+  const clearAutoCloseTimer = () => {
+    if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+  };
+
+  useEffect(() => {
+    startAutoCloseTimer();
+    return () => clearAutoCloseTimer();
+  }, []);
+
+  const unreadCount = notifications.filter((n) => n.unread).length;
+  const totalCount = notifications.length;
+
+  useEffect(() => {
+    if (onUnreadChange) {
+      onUnreadChange(unreadCount > 0);
+    }
+  }, [unreadCount, onUnreadChange]);
+
+  const handleMarkAllRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+  };
+
+  const handleDeleteItem = (e, id) => {
+    e.stopPropagation();
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  const handleClearAll = () => {
+    setNotifications([]);
+  };
+
+  const toggleSingleRead = (id) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, unread: false } : n))
+    );
+  };
+
+  const visibleNotifications = notifications.filter((n) => {
+    if (activeTab === "unread") return n.unread;
+    return true;
+  });
+
+  const getIcon = (n) => {
+    const type = (n.type || "").toLowerCase();
+    const titleLower = (n.title || "").toLowerCase();
+
+    if (titleLower.includes("placement") || titleLower.includes("drive") || titleLower.includes("goldman") || type === "calendar") {
+      return (
+        <div className="notif-colorful-icon-box notif-icon-rose">
+          <Calendar size={18} />
+        </div>
+      );
+    }
+    if (titleLower.includes("quiz") || titleLower.includes("test") || titleLower.includes("ia-") || type === "quiz" || type === "document") {
+      return (
+        <div className="notif-colorful-icon-box notif-icon-blue">
+          <FileText size={18} />
+        </div>
+      );
+    }
+    if (type === "success" || titleLower.includes("success") || titleLower.includes("completed")) {
+      return (
+        <div className="notif-colorful-icon-box notif-icon-emerald">
+          <CheckCircle2 size={18} />
+        </div>
+      );
+    }
+    return (
+      <div className="notif-colorful-icon-box notif-icon-amber">
+        <AlertTriangle size={18} />
+      </div>
+    );
+  };
+
+  const renderTitle = (n) => {
+    const title = n.title || "";
+    const titleLower = title.toLowerCase();
+    const isBroadcast = titleLower.includes("broadcast") || n.type === "broadcast";
+
+    if (isBroadcast) {
+      let cleanTitle = title
+        .replace(/📢/g, "")
+        .replace(/\[Broadcast\]/gi, "")
+        .replace(/\[Notice\]/gi, "")
+        .trim();
+
+      return (
+        <div className="notif-card-title-text">
+          <span className="notif-broadcast-badge">
+            📢 [Broadcast]
+          </span>{" "}
+          <span className="notif-title-main">{cleanTitle}</span>
+        </div>
+      );
+    }
+    return <div className="notif-card-title-text">{title}</div>;
+  };
+
+  return (
+    <div
+      className="notif-dropdown-box"
+      onMouseEnter={clearAutoCloseTimer}
+      onMouseLeave={startAutoCloseTimer}
+    >
+      {/* Header */}
+      <div className="notif-header">
+        <div className="notif-header-left">
+          <div className="notif-header-icon-wrap">
+            <Bell size={20} className="notif-header-bell" />
+            {unreadCount > 0 && <span className="notif-header-dot"></span>}
+          </div>
+          <div className="notif-header-text">
+            <div className="notif-header-title">Notifications</div>
+            <div className="notif-header-subtitle">
+              {unreadCount > 0 ? `${unreadCount} unread alert${unreadCount > 1 ? "s" : ""}` : "No unread alerts"}
+            </div>
+          </div>
+        </div>
+        <div className="notif-header-actions-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <DesktopNotificationToggle compact />
+          <button
+            className="notif-mark-read-btn"
+            onClick={handleMarkAllRead}
+            disabled={unreadCount === 0}
+            style={{ opacity: unreadCount === 0 ? 0.5 : 1, cursor: unreadCount === 0 ? "default" : "pointer" }}
+          >
+            <Check size={14} className="notif-check-icon" /> Mark read
+          </button>
+        </div>
+      </div>
+
+      {/* Pill Tabs */}
+      <div className="notif-tabs-pills">
+        <button
+          className={`notif-tab-pill ${activeTab === "all" ? "active" : ""}`}
+          onClick={() => setActiveTab("all")}
+        >
+          All ({totalCount})
+        </button>
+        <button
+          className={`notif-tab-pill ${activeTab === "unread" ? "active" : ""}`}
+          onClick={() => setActiveTab("unread")}
+        >
+          Unread ({unreadCount})
+        </button>
+      </div>
+
+      {/* List - Small Form Preview Cards */}
+      <div className="notif-list-wrap">
+        {visibleNotifications.length === 0 ? (
+          <div style={{ padding: "24px", textAlign: "center", color: "#64748b", fontSize: "0.875rem" }}>
+            No notifications to display
+          </div>
+        ) : (
+          visibleNotifications.slice(0, 5).map((n) => {
+            return (
+              <div
+                key={n.id}
+                className={`notif-list-card ${n.unread ? "unread" : ""}`}
+                onClick={() => {
+                  if (n.unread) toggleSingleRead(n.id);
+                  if (onClose) onClose();
+                  if (onSelectNotification) onSelectNotification(n);
+                }}
+              >
+                {getIcon(n)}
+
+                <div className="notif-card-main-content">
+                  <div className="notif-card-title-row">
+                    {renderTitle(n)}
+                  </div>
+
+                  <div className="notif-card-time-row">
+                    <Clock size={11} className="notif-time-icon" />
+                    <span>{n.time}</span>
+                  </div>
+                </div>
+
+                <button
+                  className="notif-delete-top-right"
+                  onClick={(e) => { e.stopPropagation(); handleDeleteItem(e, n.id); }}
+                  title="Delete notification"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="notif-footer-wrap">
+        <button
+          className="notif-view-all-btn"
+          onClick={() => {
+            if (onClose) onClose();
+            if (onOpenViewAll) onOpenViewAll();
+          }}
+        >
+          View all
+        </button>
+        <button
+          className="notif-clear-all-btn"
+          onClick={handleClearAll}
+          disabled={totalCount === 0}
+          style={{ opacity: totalCount === 0 ? 0.5 : 1, cursor: totalCount === 0 ? "default" : "pointer" }}
+        >
+          Clear all
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const defaultNotificationsList = [];
+
+export default function StudentLayout() {
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [selectedNotifModal, setSelectedNotifModal] = useState(null);
+  const [interviewLive, setInterviewLive] = useState(false);
+  const headerRightRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (headerRightRef.current && !headerRightRef.current.contains(event.target)) {
+        setNotifOpen(false);
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Hide sidebar & header when AI Interview goes live
+  useEffect(() => {
+    const onLive = () => setInterviewLive(true);
+    const onEnd = () => setInterviewLive(false);
+    window.addEventListener('interviewLive', onLive);
+    window.addEventListener('interviewEnded', onEnd);
+    return () => {
+      window.removeEventListener('interviewLive', onLive);
+      window.removeEventListener('interviewEnded', onEnd);
+    };
+  }, []);
+
+  const resolveUser = (rawUser) => {
+    let u = rawUser;
+    if (!u) {
+      try {
+        u = JSON.parse(sessionStorage.getItem("user") || localStorage.getItem("user") || "{}");
+      } catch {}
+    }
+    u = u || {};
+    let rawName = (typeof u.name === "string" && u.name) ||
+      (typeof u.fullName === "string" && u.fullName) ||
+      (typeof u.full_name === "string" && u.full_name);
+    let email = typeof u.email === "string" ? u.email : "";
+    let name = rawName;
+    if (!name || name.includes("@")) {
+      const src = email.includes("@") ? email.split("@")[0] : (name && name.includes("@") ? name.split("@")[0] : "");
+      if (src) {
+        name = src.replace(/[0-9_.-]+/g, " ").trim().split(" ").filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+      }
+    }
+    if (!name) name = "Student";
+    return { ...u, name, email };
+  };
+
+  const [user, setUser] = useState(() => resolveUser(null));
+  const [avatarUrl, setAvatarUrl] = useState(() => user?.avatar_url || user?.avatar || null);
+  const [headerNoticeDismissed, setHeaderNoticeDismissed] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [fullNotifOpen, setFullNotifOpen] = useState(false);
+
+  const [notifications, setNotifications] = useState(defaultNotificationsList);
+  const hasUnreadNotif = notifications.some((n) => n.unread);
+
+  useEffect(() => {
+    const loadStudentNotifs = () => {
+      apiFetch("/student/notifications")
+        .then((res) => {
+          const rawItems = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+          const serverItems = rawItems.map((b) => ({
+            id: b.id || `notif-${Math.random()}`,
+            title: b.title || "Announcement",
+            desc: b.message || b.desc || b.description || "",
+            message: b.message || b.desc || "",
+            time: b.time || (b.created_at ? new Date(b.created_at).toLocaleString() : "Today"),
+            unread: b.unread !== undefined ? Boolean(b.unread) : true,
+            type: b.type || (b.title?.toLowerCase().includes("broadcast") ? "broadcast" : "alert"),
+            target: b.target || "All Batches",
+            priority: b.priority || "General Notice",
+            created_by_name: b.created_by_name || "Admin",
+          }));
+          setNotifications(serverItems);
+        })
+        .catch(() => { });
+    };
+
+    loadStudentNotifs();
+    const interval = setInterval(loadStudentNotifs, 8000);
+    window.addEventListener("portal_broadcast_updated", loadStudentNotifs);
+    window.addEventListener("new_broadcast_notification", loadStudentNotifs);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("portal_broadcast_updated", loadStudentNotifs);
+      window.removeEventListener("new_broadcast_notification", loadStudentNotifs);
+    };
+  }, []);
+
+  const [showFirstLoginFlash, setShowFirstLoginFlash] = useState(false);
+
+  const checkIsProfileUpdated = (userData, userKey) => {
+    if (!userData) return false;
+    const sp = userData.studentProfile || {};
+    const hasDetails = Boolean(
+      (userData.gender && String(userData.gender).trim()) ||
+      (userData.city && String(userData.city).trim()) ||
+      (sp.gender && String(sp.gender).trim()) ||
+      (sp.city && String(sp.city).trim()) ||
+      (userData.skills && String(userData.skills).trim().length > 0) ||
+      (sp.skills && String(sp.skills).trim().length > 0) ||
+      (userData.emergency_contact && String(userData.emergency_contact).trim().length > 0) ||
+      (sp.emergency_contact && String(sp.emergency_contact).trim().length > 0) ||
+      (userData.target_track && String(userData.target_track).trim().length > 0) ||
+      (sp.target_track && String(sp.target_track).trim().length > 0)
+    );
+
+    const hasExplicitSave = Boolean(
+      userKey && (
+        sessionStorage.getItem(`profile_updated_${userKey}`) === "true" ||
+        localStorage.getItem(`profile_updated_${userKey}`) === "true"
+      )
+    );
+
+    const backendFlag = Boolean(userData.is_profile_updated || sp.is_profile_updated);
+    return Boolean((backendFlag || hasExplicitSave) && hasDetails);
+  };
+
+  const checkIsDismissedThisSession = (userKey) => {
+    return Boolean(
+      sessionStorage.getItem("st_flash_skipped_session") === "true" ||
+      sessionStorage.getItem("st_flash_skipped_current") === "true" ||
+      (userKey && sessionStorage.getItem(`st_flash_skipped_${userKey}`) === "true")
+    );
+  };
+
+  const handleDismissFirstLoginModal = (goToProfile = false) => {
+    let key = user?.id || user?.email;
+    if (!key) {
+      try {
+        const u = JSON.parse(sessionStorage.getItem("user") || localStorage.getItem("user") || "{}");
+        key = u.id || u.email;
+      } catch {}
+    }
+    // Dismiss only for current session; next login will prompt again if profile remains incomplete
+    sessionStorage.setItem("st_flash_skipped_session", "true");
+    sessionStorage.setItem("st_flash_skipped_current", "true");
+    if (key) {
+      sessionStorage.setItem(`st_flash_skipped_${key}`, "true");
+      localStorage.removeItem(`st_flash_skipped_${key}`);
+    }
+    localStorage.removeItem("st_flash_skipped_current");
+    sessionStorage.removeItem("showFirstLoginAlert");
+    setShowFirstLoginFlash(false);
+    if (goToProfile) {
+      navigate('/student/profile');
+    }
+  };
+
+  // Load user profile from backend on mount (device-synced)
+  useEffect(() => {
+    apiFetch("/student/profile")
+      .then((res) => {
+        if (res && res.data) {
+          const fetchedUser = resolveUser(res.data);
+          setUser(fetchedUser);
+
+          const userKey = fetchedUser.id || fetchedUser.email;
+          const isUpdated = checkIsProfileUpdated(res.data, userKey);
+          const isDismissed = checkIsDismissedThisSession(userKey);
+
+          if (!isUpdated && !isDismissed) {
+            setShowFirstLoginFlash(true);
+          } else {
+            setShowFirstLoginFlash(false);
+          }
+        }
+      })
+      .catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    // Re-fetch user profile from backend whenever profile is updated
+    const handleUpdate = () => {
+      apiFetch("/student/profile")
+        .then((res) => {
+          if (res && res.data) {
+            const fetchedUser = resolveUser(res.data);
+            setUser(fetchedUser);
+            if (fetchedUser.avatar_url || fetchedUser.avatar) {
+              setAvatarUrl(fetchedUser.avatar_url || fetchedUser.avatar);
+            }
+            const userKey = fetchedUser.id || fetchedUser.email;
+            const isUpdated = checkIsProfileUpdated(res.data, userKey);
+            const isDismissed = checkIsDismissedThisSession(userKey);
+
+            if (isUpdated || isDismissed) {
+              setShowFirstLoginFlash(false);
+            }
+          }
+        })
+        .catch(() => { });
+    };
+    window.addEventListener("userProfileUpdated", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+    return () => {
+      window.removeEventListener("userProfileUpdated", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleNewNotif = () => {
+      apiFetch("/student/notifications")
+        .then((res) => {
+          if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+            const serverItems = res.data.map((b) => ({
+              id: b.id || `notif-${Math.random()}`,
+              title: b.title || "Announcement",
+              desc: b.message || b.desc || b.description || "",
+              message: b.message || b.desc || "",
+              time: b.time || (b.created_at ? new Date(b.created_at).toLocaleString() : "Today"),
+              unread: b.unread !== undefined ? Boolean(b.unread) : true,
+              type: b.type || (b.title?.toLowerCase().includes("broadcast") ? "broadcast" : "alert"),
+              target: b.target || "All Batches",
+              priority: b.priority || "General Notice",
+              created_by_name: b.created_by_name || "Admin",
+            }));
+
+            setNotifications((prev) => {
+              const combined = [...serverItems, ...prev];
+              const unique = [];
+              const seenTitles = new Set();
+              for (const item of combined) {
+                const key = item.title.trim().toLowerCase();
+                if (!seenTitles.has(key)) {
+                  seenTitles.add(key);
+                  unique.push(item);
+                }
+              }
+              return unique;
+            });
+          }
+        })
+        .catch(() => { });
+    };
+    window.addEventListener("new_broadcast_notification", handleNewNotif);
+    return () => window.removeEventListener("new_broadcast_notification", handleNewNotif);
+  }, []);
+
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    setNotifOpen(false);
+    setProfileOpen(false);
+    setMobileOpen(false);
+  }, [pathname]);
+
+  const toggleSidebar = () => {
+    if (window.innerWidth <= 768) {
+      setMobileOpen((o) => !o);
+    } else {
+      setCollapsed((c) => !c);
+    }
+  };
+
+  const isCodingPlatform = pathname.startsWith('/student/coding-platform');
+  const isFullScreenApp = Boolean(interviewLive);
+
+  return (
+    <div className={`student-layout ${isFullScreenApp ? 'student-layout--fullscreen' : ''}`}>
+      {mobileOpen && (
+        <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />
+      )}
+
+      {/* Sidebar — hidden during live proctored interview */}
+      {!isFullScreenApp && (
+        <StudentSidebar
+          collapsed={collapsed}
+          mobileOpen={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+        />
+      )}
+
+      <div className="student-content" style={isFullScreenApp ? { marginLeft: 0, width: '100%', maxWidth: '100%', padding: 0 } : {}}>
+        <main className="student-main" style={isFullScreenApp ? { padding: 0, margin: 0 } : {}}>
+          {/* ONE BIG ROUNDED CORNER CARD CONTAINING HEADER & CONTENT */}
+          <div className="student-page-card" style={isFullScreenApp ? { borderRadius: 0, padding: 0, boxShadow: 'none', height: '100vh', width: '100%', overflow: 'hidden' } : {}}>
+
+            {/* Header — hidden during live interview or coding platform */}
+            {!isFullScreenApp && (
+              <header className="student-header">
+                <div className="student-header__left">
+                  <button
+                    className="student-header__sidebar-toggle"
+                    onClick={toggleSidebar}
+                    aria-label="Toggle sidebar"
+                    title="Toggle sidebar"
+                  >
+                    <PanelLeft size={20} />
+                  </button>
+
+                  <GlobalHeaderSearch role="student" />
+                </div>
+
+                <div className="student-header__right" ref={headerRightRef}>
+
+
+                  {/* Notification Bell Dropdown Wrap */}
+                  <div className="student-header__notif-wrap">
+                    <button
+                      className="student-header__icon-btn"
+                      aria-label="Notifications"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        setNotifOpen((o) => !o);
+                      }}
+                      title="Notifications"
+                    >
+                      <Bell size={21} className="student-header__bell-icon" />
+                      {hasUnreadNotif && <span className="student-header__notification-dot"></span>}
+                    </button>
+
+                    {notifOpen && (
+                      <NotificationDropdown
+                        onClose={() => setNotifOpen(false)}
+                        onUnreadChange={() => { }}
+                        onOpenViewAll={() => setFullNotifOpen(true)}
+                        notifications={notifications}
+                        setNotifications={setNotifications}
+                        onSelectNotification={(n) => setSelectedNotifModal(n)}
+                      />
+                    )}
+                  </div>
+
+                  {/* Profile section with dropdown */}
+                  <div className="student-header__user-wrap">
+                    <button
+                      className="student-header__user"
+                      onClick={() => {
+                        setNotifOpen(false);
+                        setProfileOpen((o) => !o);
+                      }}
+                      aria-label="User menu"
+                    >
+                      <div className="student-header__avatar" aria-label={`User profile ${user.name}`}>
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                          typeof user?.name === "string" && user.name.trim() ? user.name.trim().split(" ").filter(Boolean).map(n => n[0]).join("").toUpperCase().slice(0, 2) : "GS"
+                        )}
+                      </div>
+                      <div className="student-header__user-info">
+                        <span className="student-header__name">{user.name || "Student"}</span>
+                        <span className="student-header__role">{user.role || "Student"}</span>
+                      </div>
+                    </button>
+
+                    {profileOpen && (
+                      <>
+                        <div className="student-header__profile-dropdown">
+                          <div className="student-header__profile-top">
+                            <div className="student-header__profile-avatar">
+                              {typeof user?.name === "string" && user.name.trim() ? user.name.trim().split(" ").filter(Boolean).map(n => n[0]).join("").toUpperCase().slice(0, 2) : "GS"}
+                            </div>
+                            <div className="student-header__profile-info">
+                              <span className="student-header__profile-name">{user.name || "Ganesh Shinde"}</span>
+                              <span className="student-header__profile-sub">{user.email || "ganesh.shinde@student.pvppcoe.ac.in"}</span>
+                            </div>
+                          </div>
+                          <div className="student-header__profile-divider" />
+                          <button
+                            className="student-header__profile-item"
+                            onClick={() => {
+                              setProfileOpen(false);
+                              navigate("/student/profile");
+                            }}
+                          >
+                            <User size={15} />
+                            View Profile
+                          </button>
+                          <button
+                            className="student-header__profile-item"
+                            onClick={() => {
+                              setProfileOpen(false);
+                              setIsChangePasswordOpen(true);
+                            }}
+                          >
+                            <Key size={15} />
+                            Change Password
+                          </button>
+                          <button
+                            className="student-header__profile-item student-header__profile-item--danger"
+                            onClick={() => {
+                              setProfileOpen(false);
+                              sessionStorage.removeItem("token");
+                              sessionStorage.removeItem("authToken");
+                              sessionStorage.removeItem("user");
+                              sessionStorage.removeItem("role");
+                              sessionStorage.removeItem("st_flash_skipped_session");
+                              sessionStorage.removeItem("st_flash_skipped_current");
+                              sessionStorage.removeItem("st_first_login_dismissed");
+                              navigate("/login");
+                            }}
+                          >
+                            <LogOut size={15} />
+                            Logout
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </header>
+            )}
+
+            {/* Page Content Body */}
+            <div
+              className={`student-card-body ${isCodingPlatform ? 'student-card-body--coding' : ''}`}
+              style={
+                isFullScreenApp
+                  ? { padding: 0, margin: 0, height: '100%', width: '100%', overflow: 'hidden' }
+                  : isCodingPlatform
+                  ? { padding: 0, margin: 0, height: 'calc(100vh - 84px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }
+                  : {}
+              }
+            >
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <Outlet />
+              </Suspense>
+            </div>
+
+          </div>
+        </main>
+      </div>
+      <BroadcastToast />
+      <FullNotificationModal
+        isOpen={fullNotifOpen}
+        onClose={() => setFullNotifOpen(false)}
+        notifications={notifications}
+        setNotifications={setNotifications}
+      />
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
+
+      {showFirstLoginFlash && createPortal(
+        <div className="st-firstlogin-overlay" role="dialog" aria-modal="true" aria-labelledby="st-firstlogin-title">
+          <div className="st-firstlogin-card">
+            <div className="st-firstlogin-icon-box">
+              <UserCog size={32} />
+            </div>
+
+            <div>
+              <h3 id="st-firstlogin-title" className="st-firstlogin-title">
+                Complete Your Profile 🎓
+              </h3>
+              <p className="st-firstlogin-desc">
+                Welcome to TrainX! Please complete your profile details (gender, city, skills, target track) to unlock personalized training, assignments, and placement opportunities.
+              </p>
+            </div>
+
+            <div className="st-firstlogin-actions">
+              <button
+                type="button"
+                className="st-firstlogin-btn-secondary"
+                onClick={() => handleDismissFirstLoginModal(false)}
+              >
+                Skip for now
+              </button>
+              <button
+                type="button"
+                className="st-firstlogin-btn-primary"
+                onClick={() => handleDismissFirstLoginModal(true)}
+              >
+                Update Profile
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+      <NotificationDetailModal
+        notification={selectedNotifModal}
+        onClose={() => setSelectedNotifModal(null)}
+        onMarkRead={(id) => setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, unread: !n.unread } : n))}
+        onDelete={(id) => setNotifications((prev) => prev.filter((n) => n.id !== id))}
+        onNavigate={(path) => navigate(path)}
+      />
+    </div>
+  );
+}

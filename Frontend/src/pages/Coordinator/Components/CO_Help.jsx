@@ -1,0 +1,608 @@
+import React, { useState, useEffect, useRef } from "react";
+import { Check, HelpCircle, MessageCircle, Phone, Search, Plus, ChevronDown, Sparkles, Ticket, FileText, Download, ThumbsUp, ThumbsDown, X, Send, ShieldAlert, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { apiFetch } from "../../../utils/api";
+import "../../Student/Styles/ST_Help.css";
+import "../Styles/CO_Help.css";
+
+function CoordHelpSelect({ value, options = [], onChange, placeholder = 'Select...', icon: Icon }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = React.useRef(null);
+  const safeOptions = Array.isArray(options) ? options : [];
+  const selected = safeOptions.find(o => String(o.value) === String(value));
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setIsOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  return (
+    <div className={`student-help-select-wrap${isOpen ? ' student-help-select-wrap--open' : ''}`} ref={ref}>
+      <button type="button" onClick={() => setIsOpen(v => !v)} className={`student-help-select-trigger${isOpen ? ' student-help-select-trigger--open' : ''}`}>
+        {Icon && <Icon className="student-help-select-icon" />}
+        <span className="student-help-select-text">{selected ? selected.label : <span className="coord-help-placeholder">{placeholder}</span>}</span>
+        <ChevronDown className={`student-help-select-arrow${isOpen ? ' student-help-select-arrow--rotate' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="student-help-select-dropdown">
+          {safeOptions.map(opt => {
+            const isSel = String(opt.value) === String(value);
+            return (
+              <div key={opt.value} onClick={() => { onChange(opt.value); setIsOpen(false); }} className={`student-help-select-option${isSel ? ' student-help-select-option--selected' : ''}`}>
+                <span className="student-help-select-option-label">{opt.label}</span>
+                {isSel && <Check className="student-help-select-check" />}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const defaultFaqs = [
+  {
+    id: 1,
+    category: "Attendance & QR",
+    q: "How do I mark my attendance via QR code?",
+    a: "Go to Attendance tab → click 'Scan QR Code' and point your camera at the dynamic QR code displayed on the faculty's lecture screen."
+  },
+  {
+    id: 2,
+    category: "Academics & Labs",
+    q: "Where can I view my internal assessment marks and lab feedback?",
+    a: "Navigate to Academics → select your course → click the 'Assessments & Labs' tab to view real-time marks and offline viva feedback."
+  },
+  {
+    id: 3,
+    category: "Academics & Labs",
+    q: "How do I submit my practical lab assignment report?",
+    a: "Open your practical experiment workspace from the Academics page. You can ask the AI Assistant to generate the lab report side-by-side, edit any section, attach your code file, and click 'Submit Assignment'."
+  },
+  {
+    id: 4,
+    category: "Account & Security",
+    q: "My profile or registration details are incorrect. How do I update them?",
+    a: "Navigate to Account / Settings → Profile Details. Update your roll number, phone, or email, and click 'Save Changes'. You can also raise a support ticket if your branch is locked."
+  },
+  {
+    id: 5,
+    category: "Exams & Marks",
+    q: "What should I do if my attendance falls below the 75% threshold?",
+    a: "Check your subject-wise breakdown in the Attendance section. If you missed classes due to medical reasons, submit a Medical Leave Request ticket along with doctor certificates."
+  }
+];
+
+const kbGuides = [
+  {
+    title: "Department Coordinator Governance Manual",
+    desc: "Complete guide on batch allocations, faculty assignments, attendance approvals, and system escalations.",
+    size: "3.2 MB",
+    type: "PDF Document"
+  },
+  {
+    title: "Student Condonation & Exam Eligibility Rules",
+    desc: "Official institutional rules governing 75% attendance compliance, medical overrides, and exam hall ticket generation.",
+    size: "1.9 MB",
+    type: "PDF Document"
+  }
+];
+
+export default function CoordinatorHelp() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("faq");
+  const [selectedCat, setSelectedCat] = useState("All");
+  const [openFaqId, setOpenFaqId] = useState(1);
+  const [helpfulFeedback, setHelpfulFeedback] = useState({});
+
+  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
+  const [tickets, setTickets] = useState([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+
+  // Escalation state
+  const [escalateModalOpen, setEscalateModalOpen] = useState(false);
+  const [ticketToEscalate, setTicketToEscalate] = useState(null);
+  const [escalationReason, setEscalationReason] = useState("");
+  const [escalating, setEscalating] = useState(false);
+
+  const [newTicket, setNewTicket] = useState({
+    subject: "",
+    category: "Academics & Labs",
+    priority: "Normal",
+    description: ""
+  });
+
+  const categories = ["All", "Attendance & QR", "Academics & Labs", "Account & Security", "Exams & Marks"];
+
+  const fetchTickets = async () => {
+    setLoadingTickets(true);
+    try {
+      const res = await apiFetch('/coordinator/support/tickets');
+      const list = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+      setTickets(list);
+    } catch (err) {
+      console.error('[CO_Help fetchTickets error]', err);
+    } finally {
+      setLoadingTickets(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTickets();
+  }, []);
+
+  const filteredFaqs = defaultFaqs.filter((f) => {
+    const matchesCat = selectedCat === "All" || f.category === selectedCat;
+    const matchesQuery =
+      f.q.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      f.a.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCat && matchesQuery;
+  });
+
+  const handleCreateTicket = async (e) => {
+    e.preventDefault();
+    if (!newTicket.subject.trim() || !newTicket.description.trim()) return;
+
+    try {
+      const res = await apiFetch('/coordinator/support/tickets', {
+        method: 'POST',
+        body: JSON.stringify(newTicket),
+      });
+      if (res && res.success) {
+        setNewTicket({ subject: "", category: "Academics & Labs", priority: "Normal", description: "" });
+        setIsTicketModalOpen(false);
+        setActiveTab("tickets");
+        fetchTickets();
+      }
+    } catch (err) {
+      console.error('[CO_Help handleCreateTicket error]', err);
+    }
+  };
+
+  const handleOpenEscalateModal = (ticket) => {
+    setTicketToEscalate(ticket);
+    setEscalationReason("");
+    setEscalateModalOpen(true);
+  };
+
+  const handleConfirmEscalate = async (e) => {
+    e.preventDefault();
+    if (!ticketToEscalate) return;
+    setEscalating(true);
+    try {
+      const res = await apiFetch(`/coordinator/support/tickets/${ticketToEscalate.dbId || ticketToEscalate.id}/escalate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          escalationReason: escalationReason || 'Coordinator requested assistance from College Admin.'
+        })
+      });
+      if (res && res.success) {
+        setEscalateModalOpen(false);
+        fetchTickets();
+      }
+    } catch (err) {
+      console.error('[CO_Help escalate error]', err);
+    } finally {
+      setEscalating(false);
+    }
+  };
+
+  const handleResolveTicket = async (ticket) => {
+    try {
+      await apiFetch(`/coordinator/support/tickets/${ticket.dbId || ticket.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          status: 'Resolved',
+          resolutionNote: 'Resolved by Department Coordinator.'
+        })
+      });
+      fetchTickets();
+    } catch (err) {
+      console.error('[CO_Help resolve error]', err);
+    }
+  };
+
+  const toggleFaq = (id) => {
+    setOpenFaqId(openFaqId === id ? null : id);
+  };
+
+  const handleFeedback = (faqId, type) => {
+    setHelpfulFeedback((prev) => ({ ...prev, [faqId]: type }));
+  };
+
+  return (
+    <div className="help-page-wrapper">
+      <div className="coord-help-header-wrap">
+        <h2 className="coord-help-title">
+          <HelpCircle size={24} className="coord-help-icon" />
+          Support Ticket & Help Desk
+        </h2>
+        <p className="coord-help-desc">
+          Find answers to common questions or reach out to our support team.
+        </p>
+      </div>
+
+      {/* Support Channel Quick Cards */}
+      <div className="help-channels-grid">
+        <div
+          className="help-channel-card-modern coord-help-card-clickable"
+          onClick={() => setIsTicketModalOpen(true)}
+        >
+          <div className="help-channel-icon-avatar help-icon-blue">
+            <Ticket size={22} />
+          </div>
+          <div className="help-channel-info">
+            <span className="help-channel-badge help-badge-blue">IT SUPPORT DESK</span>
+            <h3 className="help-channel-title">Raise Support Ticket</h3>
+            <p className="help-channel-sub">Report system bugs, login errors, or missing attendance records.</p>
+            <span className="help-channel-action-link">+ Create New Ticket →</span>
+          </div>
+        </div>
+
+        <div
+          className="help-channel-card-modern coord-help-card-clickable"
+          onClick={() => { window.location.href = "mailto:support@acadnexus.com"; }}
+        >
+          <div className="help-channel-icon-avatar help-icon-emerald">
+            <MessageCircle size={22} />
+          </div>
+          <div className="help-channel-info">
+            <span className="help-channel-badge help-badge-emerald">EMAIL ASSISTANCE</span>
+            <h3 className="help-channel-title">Email Support</h3>
+            <p className="help-channel-sub">Direct response from department coordinator within 24 hours.</p>
+            <span className="help-channel-action-link help-link-emerald">support@acadnexus.com →</span>
+          </div>
+        </div>
+
+        <div
+          className="help-channel-card-modern coord-help-card-clickable"
+          onClick={() => { window.location.href = "tel:+919876543210"; }}
+        >
+          <div className="help-channel-icon-avatar help-icon-purple">
+            <Phone size={22} />
+          </div>
+          <div className="help-channel-info">
+            <span className="help-channel-badge help-badge-purple">HELPLINE</span>
+            <h3 className="help-channel-title">Campus Hotline</h3>
+            <p className="help-channel-sub">Mon – Fri, 9:00 AM – 6:00 PM</p>
+            <span className="help-channel-action-link help-link-purple">+91 98765 43210 →</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Section Tabs */}
+      <div className="help-section-bar">
+        <div className="help-tabs-row">
+          <button
+            className={`help-tab-btn ${activeTab === "faq" ? "active" : ""}`}
+            onClick={() => setActiveTab("faq")}
+          >
+            <HelpCircle size={15} /> Knowledge Base & FAQs
+          </button>
+          <button
+            className={`help-tab-btn ${activeTab === "tickets" ? "active" : ""}`}
+            onClick={() => setActiveTab("tickets")}
+          >
+            <Ticket size={15} /> My Support Tickets ({tickets.length})
+          </button>
+          <button
+            className={`help-tab-btn ${activeTab === "guides" ? "active" : ""}`}
+            onClick={() => setActiveTab("guides")}
+          >
+            <FileText size={15} /> Downloads & Manuals
+          </button>
+        </div>
+      </div>
+
+      {/* TAB 1: KNOWLEDGE BASE & FAQS */}
+      {activeTab === "faq" && (
+        <div className="help-faq-column">
+          <div className="help-cat-pills-row">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                className={`help-cat-pill ${selectedCat === cat ? "active" : ""}`}
+                onClick={() => setSelectedCat(cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <div className="help-faq-list">
+            {filteredFaqs.map((faq) => {
+              const isOpen = openFaqId === faq.id;
+              return (
+                <div key={faq.id} className={`help-faq-item-card ${isOpen ? "open" : ""}`}>
+                  <div className="help-faq-header" onClick={() => toggleFaq(faq.id)}>
+                    <h4 className="help-faq-question">
+                      <HelpCircle size={18} color="#3b82f6" />
+                      {faq.q}
+                    </h4>
+                    <div className="help-faq-actions">
+                      <span className="help-faq-category-tag">{faq.category}</span>
+                      <ChevronDown size={18} className="help-faq-toggle-icon" />
+                    </div>
+                  </div>
+
+                  {isOpen && (
+                    <div className="help-faq-body">
+                      <p>{faq.a}</p>
+                      <div className="help-faq-helpful-row">
+                        <span>Was this answer helpful?</span>
+                        <button
+                          className={`help-helpful-btn ${helpfulFeedback[faq.id] === "yes" ? "active" : ""}`}
+                          onClick={() => handleFeedback(faq.id, "yes")}
+                          style={helpfulFeedback[faq.id] === "yes" ? { background: "#ecfdf5", color: "#059669", borderColor: "#a7f3d0" } : {}}
+                        >
+                          <ThumbsUp size={12} /> Yes
+                        </button>
+                        <button
+                          className={`help-helpful-btn ${helpfulFeedback[faq.id] === "no" ? "active" : ""}`}
+                          onClick={() => handleFeedback(faq.id, "no")}
+                          style={helpfulFeedback[faq.id] === "no" ? { background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" } : {}}
+                        >
+                          <ThumbsDown size={12} /> No
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: MY SUPPORT TICKETS */}
+      {activeTab === "tickets" && (
+        <div className="help-tickets-card">
+          <div className="help-tickets-table-wrapper">
+            <table className="help-tickets-table">
+              <thead>
+                <tr>
+                  <th>Ticket ID</th>
+                  <th>Subject & Details</th>
+                  <th>Raised By</th>
+                  <th>Category</th>
+                  <th>Priority</th>
+                  <th>Date Raised</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingTickets ? (
+                  <tr>
+                    <td colSpan="8" className="help-table-empty-cell">
+                      Loading tickets...
+                    </td>
+                  </tr>
+                ) : tickets.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="help-table-empty-cell">
+                      No support tickets raised yet.
+                    </td>
+                  </tr>
+                ) : (
+                  tickets.map((t) => (
+                    <tr key={t.id}>
+                      <td><span className="help-ticket-id">{t.id}</span></td>
+                      <td className="help-table-subject">
+                        <div style={{ fontWeight: 600, color: '#0f172a' }}>{t.subject || t.title}</div>
+                        {t.description && <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>{t.description.slice(0, 80)}{t.description.length > 80 ? '...' : ''}</div>}
+                        {t.isEscalated && <div style={{ fontSize: '0.74rem', color: '#ea580c', fontWeight: 600, marginTop: 3 }}>⚠ Escalated to College Admin: {t.escalationReason || 'Assistance requested'}</div>}
+                        {t.resolutionNote && <div style={{ fontSize: '0.74rem', color: '#16a34a', marginTop: 2 }}>✓ Resolution: {t.resolutionNote}</div>}
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b' }}>
+                          {t.requesterName || (t.isOwner ? 'Me (Coordinator)' : 'User')}
+                        </span>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{t.role || (t.isOwner ? 'COORDINATOR' : 'USER')}</div>
+                      </td>
+                      <td><span className="help-faq-category-tag">{t.category}</span></td>
+                      <td>
+                        <span className={`help-priority-pill ${t.priority === "High" ? "help-priority-high" : "help-priority-normal"}`}>
+                          {t.priority}
+                        </span>
+                      </td>
+                      <td className="help-table-date">{t.created || t.time}</td>
+                      <td>
+                        <span className={`help-ticket-status-pill ${
+                          t.isEscalated || t.status === "Escalated"
+                            ? "help-priority-high"
+                            : t.status === "In Progress"
+                            ? "help-status-in-progress"
+                            : t.status === "Resolved"
+                              ? "help-status-resolved"
+                              : "help-status-open"
+                          }`}>
+                          {t.isEscalated || t.status === "Escalated" ? "⚠ Escalated" : t.status}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {t.status !== 'Resolved' && (
+                            <button
+                              onClick={() => handleResolveTicket(t)}
+                              style={{ padding: '4px 8px', fontSize: '0.75rem', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+                              title="Mark as resolved"
+                            >
+                              <Check size={12} /> Resolve
+                            </button>
+                          )}
+                          {!t.isEscalated && t.status !== 'Escalated' && t.status !== 'Resolved' && (
+                            <button
+                              onClick={() => handleOpenEscalateModal(t)}
+                              style={{ padding: '4px 8px', fontSize: '0.75rem', background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+                              title="Escalate ticket to College Admin"
+                            >
+                              <ShieldAlert size={12} /> Escalate to Admin
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: DOWNLOADS & USER GUIDES */}
+      {activeTab === "guides" && (
+        <div className="help-kb-grid">
+          {kbGuides.map((guide, idx) => (
+            <div key={idx} className="help-kb-card">
+              <div className="help-kb-header">
+                <div className="help-kb-icon">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h4 className="help-kb-title">{guide.title}</h4>
+                  <span className="help-guide-meta">{guide.type} • {guide.size}</span>
+                </div>
+              </div>
+              <p className="help-kb-desc">{guide.desc}</p>
+              <button
+                className="help-kb-download-btn"
+                onClick={() => {
+                  alert(`Downloading ${guide.title}...`);
+                }}
+              >
+                <Download size={14} /> Download PDF Guide
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* MODAL: RAISE SUPPORT TICKET */}
+      {isTicketModalOpen && (
+        <div className="help-modal-overlay">
+          <div className="help-modal-card">
+            <div className="help-modal-header">
+              <h3 className="help-modal-title">
+                <Ticket size={18} color="#60a5fa" /> Raise New Support Ticket
+              </h3>
+              <button className="help-modal-close-btn" onClick={() => setIsTicketModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTicket} className="help-modal-form">
+              <div className="help-form-group">
+                <label className="help-form-label">Subject / Issue Summary *</label>
+                <input
+                  type="text"
+                  className="help-form-input"
+                  placeholder="e.g. Attendance marked absent for OS Lecture 4"
+                  value={newTicket.subject}
+                  onChange={(e) => setNewTicket({ ...newTicket, subject: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="help-grid-2col">
+                <div className="help-form-group">
+                  <label className="help-form-label">Category</label>
+                  <CoordHelpSelect
+                    value={newTicket.category}
+                    options={[
+                      { value: "Attendance & QR", label: "Attendance & QR" },
+                      { value: "Academics & Labs", label: "Academics & Labs" },
+                      { value: "Account & Security", label: "Account & Security" },
+                      { value: "Exams & Marks", label: "Exams & Marks" },
+                      { value: "System / Portal Bug", label: "System / Portal Bug" },
+                    ]}
+                    onChange={(val) => setNewTicket({ ...newTicket, category: val })}
+                  />
+                </div>
+
+                <div className="help-form-group">
+                  <label className="help-form-label">Priority Level</label>
+                  <CoordHelpSelect
+                    value={newTicket.priority}
+                    options={[
+                      { value: "Normal", label: "Normal" },
+                      { value: "High", label: "High Priority" },
+                      { value: "Critical", label: "Critical Urgent" },
+                    ]}
+                    onChange={(val) => setNewTicket({ ...newTicket, priority: val })}
+                  />
+                </div>
+              </div>
+
+              <div className="help-form-group">
+                <label className="help-form-label">Detailed Description *</label>
+                <textarea
+                  className="help-form-textarea"
+                  rows={4}
+                  placeholder="Provide all relevant details, date of class, subject name, or error messages..."
+                  value={newTicket.description}
+                  onChange={(e) => setNewTicket({ ...newTicket, description: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="help-modal-footer">
+                <button type="button" className="help-cancel-btn" onClick={() => setIsTicketModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="help-submit-btn">
+                  Submit Ticket
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ESCALATE TO COLLEGE ADMIN */}
+      {escalateModalOpen && ticketToEscalate && (
+        <div className="help-modal-overlay">
+          <div className="help-modal-card" style={{ maxWidth: '500px' }}>
+            <div className="help-modal-header" style={{ background: '#ea580c' }}>
+              <h3 className="help-modal-title" style={{ color: '#fff' }}>
+                <ShieldAlert size={18} color="#fff" /> Escalate Ticket to College Admin
+              </h3>
+              <button className="help-modal-close-btn" style={{ color: '#fff' }} onClick={() => setEscalateModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmEscalate} className="help-modal-form">
+              <div style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '0.82rem' }}>
+                <p style={{ margin: 0 }}><strong>Ticket ID:</strong> {ticketToEscalate.id}</p>
+                <p style={{ margin: '4px 0 0 0' }}><strong>Subject:</strong> {ticketToEscalate.subject || ticketToEscalate.title}</p>
+                <p style={{ margin: '4px 0 0 0' }}><strong>Requester:</strong> {ticketToEscalate.requesterName} ({ticketToEscalate.role})</p>
+              </div>
+
+              <div className="help-form-group">
+                <label className="help-form-label">Reason for Escalation to College Admin *</label>
+                <textarea
+                  className="help-form-textarea"
+                  rows={4}
+                  placeholder="Explain why this requires administrative approval or college-level intervention..."
+                  value={escalationReason}
+                  onChange={(e) => setEscalationReason(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="help-modal-footer">
+                <button type="button" className="help-cancel-btn" onClick={() => setEscalateModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="help-submit-btn" disabled={escalating} style={{ background: '#ea580c' }}>
+                  {escalating ? 'Escalating...' : 'Confirm Escalation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

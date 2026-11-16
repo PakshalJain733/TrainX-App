@@ -1,0 +1,89 @@
+import { Router } from 'express';
+import {
+  getAdminData,
+  getAdminStats,
+  getAdminUsers,
+  getAdminPendingUsers,
+  approveUserAdmin,
+  rejectUserAdmin,
+  createUserAdmin,
+  bulkCreateUsersAdmin,
+  updateUserAdmin,
+  deleteUserAdmin,
+  getAdminPracticeProblems,
+  createAdminPracticeProblem,
+  updateAdminPracticeProblem,
+  deleteAdminPracticeProblem,
+  generateAIPracticeProblemController,
+  getAdminProfile,
+  updateAdminProfile,
+  getAdminBroadcasts,
+  createAdminBroadcast,
+  deleteAdminBroadcast,
+  getAdminPerformance,
+  assignMentorToStudents,
+  getMentorAssignments,
+  getAdminC2CEnrollments,
+  triggerUser2FAAdmin,
+  getAdminSupportTickets,
+  updateAdminSupportTicket,
+  escalateSupportTicketToSuperAdmin,
+  createAdminSupportTicket,
+} from '../controllers/admin.controller.js';
+import { authenticateToken } from '../middleware/auth.middleware.js';
+import { authorizeRoles } from '../middleware/role.middleware.js';
+import { ROLES } from '../utils/constants.js';
+import { getAllCodingSubmissionsAdmin } from '../controllers/codingSubmission.controller.js';
+
+const router = Router();
+
+// Protect Admin API with authenticateToken & authorizeRoles
+router.use(authenticateToken);
+router.use(authorizeRoles(ROLES.SUPER_ADMIN, ROLES.COLLEGE_ADMIN));
+
+router.get('/', getAdminData);
+router.get('/stats', getAdminStats);
+router.get('/users', getAdminUsers);
+router.get('/pending-users', getAdminPendingUsers);
+router.patch('/users/:id/approve', approveUserAdmin);
+router.patch('/users/:id/reject', rejectUserAdmin);
+router.post('/users', createUserAdmin);
+router.post('/users/bulk-upload', bulkCreateUsersAdmin);
+router.put('/users/:id', updateUserAdmin);
+router.delete('/users/:id', deleteUserAdmin);
+router.post('/users/:id/trigger-2fa', authorizeRoles(ROLES.SUPER_ADMIN), triggerUser2FAAdmin);
+
+// Admin Profile
+router.get('/profile', getAdminProfile);
+router.put('/profile', updateAdminProfile);
+
+// Coding Tasks / Practice Problems
+router.get('/practice-problems', getAdminPracticeProblems);
+router.post('/practice-problems', createAdminPracticeProblem);
+router.put('/practice-problems/:id', updateAdminPracticeProblem);
+router.post('/practice-problems/generate-ai', generateAIPracticeProblemController);
+router.delete('/practice-problems/:id', deleteAdminPracticeProblem);
+router.get('/practice-problems/submissions', getAllCodingSubmissionsAdmin);
+
+// Broadcast Notifications Center
+router.get('/broadcast', authorizeRoles(ROLES.SUPER_ADMIN, ROLES.COLLEGE_ADMIN, ROLES.COORDINATOR, ROLES.MENTOR), getAdminBroadcasts);
+router.post('/broadcast', createAdminBroadcast);
+router.delete('/broadcast/:id', deleteAdminBroadcast);
+
+// Performance Analysis
+router.get('/performance', getAdminPerformance);
+
+// Faculty Mentor Assignment Routes
+router.post('/assign-mentor', assignMentorToStudents);
+router.get('/assign-mentor', getMentorAssignments);
+
+// C2C 2029 Training Enrollments
+router.get('/c2c/enrollments', getAdminC2CEnrollments);
+
+// Support Ticket Management & Escalation
+router.get('/support/tickets', getAdminSupportTickets);
+router.post('/support/tickets', createAdminSupportTicket);
+router.put('/support/tickets/:id', updateAdminSupportTicket);
+router.post('/support/tickets/:id/escalate', escalateSupportTicketToSuperAdmin);
+
+export default router;

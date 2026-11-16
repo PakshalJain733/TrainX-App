@@ -1,0 +1,766 @@
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
+import { Users, Calendar, Clock, BookOpen, ArrowUpRight, Code2, Database, Layers, CheckCircle2, ArrowLeft, FileText, Video, PlayCircle, Trophy, AlertCircle, Clock3, CalendarDays, CheckSquare, Square, Award, Flame, Check, Plus, X, KeyRound, Loader2, Sparkles, ArrowRight } from "lucide-react";
+import { Badge } from "../../../components/ui/Badge";
+import { getApiBaseUrl, getAuthToken } from "../../../utils/api.js";
+import "../Styles/ST_Batches.css";
+
+const API_BASE = getApiBaseUrl();
+
+function getAuthHeaders() {
+  const token = getAuthToken() || "";
+
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+const getStoredUserName = () => {
+  try {
+    const raw = sessionStorage.getItem("user");
+    if (!raw) return "Student";
+    const u = JSON.parse(raw);
+    return u.name || u.fullName || u.full_name || u.email?.split("@")[0] || "Student";
+  } catch {
+    return "Student";
+  }
+};
+
+const getInitials = (name) => {
+  if (!name || name.trim().length === 0) return "ST";
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+};
+
+function mapApiBatch(b) {
+  const code = b.join_code || b.code || `BATCH-${b.id}`;
+  const userName = getStoredUserName();
+  const userInitials = getInitials(userName);
+  const isInactive = b.status === "inactive" || b.status === "Inactive";
+  const initialXp = Number(b.xp || b.user_xp || b.earned_xp) || 0;
+
+  return {
+    id: b.id || `batch-${b.id}`,
+    title: b.name || b.title,
+    code: code,
+    track: b.track || "Training Batch",
+    trainer: b.mentor || b.trainer || "Faculty Lead",
+    timing: b.schedule || b.timing || "Regular Sessions",
+    studentsEnrolled: b.students || b.studentsEnrolled || 1,
+    progress: b.progress || 0,
+    status: isInactive ? "Inactive" : (b.status === "active" ? "Active" : b.status || "Active"),
+    color: isInactive ? "#64748b" : "#2563eb",
+    bg: isInactive ? "#f1f5f9" : "#eff6ff",
+    icon: Code2,
+    description: b.description || `${b.name} training batch curriculum and assignments.`,
+    stats: { completedTasks: 0, pendingTasks: 0, urgentTaskNumber: "None", urgentTaskDeadline: "No Deadline" },
+    leaderboard: [
+      { rank: 1, name: `${userName} (You)`, xp: initialXp, initials: userInitials, self: true },
+    ],
+    modules: [],
+    apiTasks: [],
+  };
+}
+
+export default function Batches() {
+  const [selectedBatch, setSelectedBatch] = useState(null);
+  const [enrolledBatches, setEnrolledBatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Modal State
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [modalError, setModalError] = useState("");
+  const [modalSuccess, setModalSuccess] = useState("");
+
+  // Fetch enrolled batches from backend API
+  const fetchMyBatches = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/batches/my-batches`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        const activeOnly = data.data.filter(b => {
+          const st = (b.status || "").toLowerCase();
+          return st !== "inactive" && st !== "deleted";
+        });
+        const mapped = activeOnly.map(mapApiBatch);
+        setEnrolledBatches(mapped);
+      } else {
+        setEnrolledBatches([]);
+      }
+    } catch (err) {
+      console.error("Failed to load enrolled batches:", err);
+      setEnrolledBatches([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle batch selection and load assigned tasks dynamically
+  const handleOpenBatch = async (batch) => {
+    setSelectedBatch(batch);
+    try {
+      const res = await fetch(`${API_BASE}/batches/${batch.id}/tasks`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        const customTasks = data.data.map((t, idx) => ({
+          id: t.id,
+          taskNumber: `Task ${String(idx + 1).padStart(2, "0")}`,
+          title: t.title,
+          type: `${t.difficulty || "Medium"} · ${t.topic || "Assignment"} (${t.points || 100} pts)`,
+          due: t.deadline ? `Due ${t.deadline}` : "No Deadline",
+          status: t.status || "Pending",
+          platform: t.platform || "coding",
+          points: Number(t.points) || 100,
+          scoreObtained: t.scoreObtained ?? t.marksObtained ?? null,
+          alreadySubmitted: Boolean(t.alreadySubmitted),
+          language: t.language || "",
+          description: t.description || t.desc || "",
+          testCases: t.testCases || t.test_cases || [],
+          batch_id: t.batch_id || batch.id,
+        }));
+
+        // Batch XP calculates according to task marks obtained
+        const completedXp = customTasks
+          .reduce((sum, t) => sum + (t.scoreObtained != null ? Number(t.scoreObtained) : ((t.status || "").toLowerCase() === "completed" ? (t.points || 100) : 0)), 0);
+
+        setSelectedBatch((prev) => ({
+          ...prev,
+          apiTasks: customTasks,
+          leaderboard: [
+            {
+              rank: 1,
+              name: `${getStoredUserName()} (You)`,
+              xp: completedXp,
+              initials: getInitials(getStoredUserName()),
+              self: true,
+            }
+          ],
+          stats: {
+            ...prev.stats,
+            pendingTasks: customTasks.filter(t => t.status !== "Completed").length,
+            completedTasks: customTasks.filter(t => t.status === "Completed").length,
+            urgentTaskNumber: customTasks.length > 0 ? customTasks[0].taskNumber : "None",
+            urgentTaskDeadline: customTasks.length > 0 ? customTasks[0].due : "No Deadline",
+          }
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to load batch tasks:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/me`, { headers: getAuthHeaders() })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data) {
+          sessionStorage.setItem("user", JSON.stringify(data.data));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        fetchMyBatches();
+      });
+  }, []);
+
+  // Handle batch join submission
+  const handleJoinSubmit = async (e) => {
+    e.preventDefault();
+    const cleanCode = (joinCodeInput || "").trim().toUpperCase();
+    if (!cleanCode) {
+      setModalError("Please enter a valid batch code.");
+      return;
+    }
+
+    const token = getAuthToken();
+    if (!token) {
+      setModalError("Authentication session not found. Please log in again to join a batch.");
+      return;
+    }
+
+    setJoining(true);
+    setModalError("");
+    setModalSuccess("");
+
+    try {
+      const res = await fetch(`${API_BASE}/batches/join`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          join_code: cleanCode,
+          joinCode: cleanCode,
+          code: cleanCode
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setModalSuccess(data.message || "Successfully joined batch!");
+        setJoinCodeInput("");
+        await fetchMyBatches();
+        setTimeout(() => {
+          setShowJoinModal(false);
+          setModalSuccess("");
+        }, 1500);
+      } else {
+        setModalError(data.message || "Failed to join batch. Please check code.");
+      }
+    } catch (err) {
+      setModalError("Server connection error. Please try again.");
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  if (selectedBatch) {
+    const Icon = selectedBatch.icon;
+    const batchTasksList = selectedBatch.apiTasks || selectedBatch.modules.flatMap(m => m.tasks);
+    const totalBatchTasks = batchTasksList.length;
+    return (
+      <div className="student-page-inner coursework-view-container">
+        <button
+          type="button"
+          className="coursework-back-btn"
+          onClick={() => setSelectedBatch(null)}
+        >
+          <ArrowLeft size={16} />
+          <span>Back to My Batches</span>
+        </button>
+
+        {/* Coursework Banner */}
+        <div className="coursework-header-banner">
+          <div className="coursework-header-left">
+            <div
+              className="coursework-header-icon"
+              style={{ background: selectedBatch.bg, color: selectedBatch.color }}
+            >
+              <Icon size={28} />
+            </div>
+            <div>
+              <h2 className="coursework-header-title">{selectedBatch.title}</h2>
+              <p className="coursework-header-subtitle">
+                {selectedBatch.code} · Trainer: {selectedBatch.trainer} · {selectedBatch.timing}
+              </p>
+            </div>
+          </div>
+
+          <div className="coursework-header-meta">
+            <div className="coursework-meta-stat">
+              <span className="coursework-meta-stat-label">Syllabus Progress</span>
+              <span className="coursework-meta-stat-value">{selectedBatch.progress}%</span>
+            </div>
+            <div className="coursework-meta-stat">
+              <span className="coursework-meta-stat-label">Batch Status</span>
+              <Badge variant={selectedBatch.status === "Inactive" ? "destructive" : "primary"}>
+                {selectedBatch.status}
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        {selectedBatch.status === "Inactive" && (
+          <div style={{
+            background: '#fff1f2',
+            border: '1px solid #fecdd3',
+            color: '#9f1239',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            marginBottom: '20px',
+            fontWeight: 500,
+            fontSize: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <AlertCircle size={18} style={{ flexShrink: 0 }} />
+            <span>This batch has been marked as <strong>Inactive</strong> by Admin. New registrations and modifications for this cohort are disabled.</span>
+          </div>
+        )}
+
+        {/* 4 KPI Stats Row */}
+        <div className="cw-stats-row">
+          <div className="cw-stat-card">
+            <div className="cw-stat-icon-wrap cw-stat-icon--emerald">
+              <CheckCircle2 size={20} />
+            </div>
+            <div className="cw-stat-info-col">
+              <p className="cw-stat-label">Completed Tasks</p>
+              <h4 className="cw-stat-value">{selectedBatch.stats.completedTasks}</h4>
+            </div>
+          </div>
+
+          <div className="cw-stat-card">
+            <div className="cw-stat-icon-wrap cw-stat-icon--amber">
+              <Clock3 size={20} />
+            </div>
+            <div className="cw-stat-info-col">
+              <p className="cw-stat-label">Pending Tasks</p>
+              <h4 className="cw-stat-value">{selectedBatch.stats.pendingTasks}</h4>
+            </div>
+          </div>
+
+          <div className="cw-stat-card">
+            <div className="cw-stat-icon-wrap cw-stat-icon--blue">
+              <CheckSquare size={20} />
+            </div>
+            <div className="cw-stat-info-col">
+              <p className="cw-stat-label">Task Completion Rate</p>
+              <h4 className="cw-stat-value">
+                {totalBatchTasks > 0 ? Math.round((selectedBatch.stats.completedTasks / totalBatchTasks) * 100) : 100}%
+              </h4>
+            </div>
+          </div>
+
+          <div className="cw-stat-card">
+            <div className="cw-stat-icon-wrap cw-stat-icon--red">
+              <AlertCircle size={20} />
+            </div>
+            <div className="cw-stat-info-col">
+              <p className="cw-stat-label">
+                Next Deadline ({selectedBatch.stats.urgentTaskNumber})
+              </p>
+              <div className="cw-stat-due-wrapper">
+                <span className="cw-stat-due-text">
+                  {selectedBatch.stats.urgentTaskDeadline}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Split Arena */}
+        <div className="cw-content-split-grid">
+          <div className="cw-left-pane">
+            <div className="cw-unified-container">
+              <div className="cw-unified-header">
+                <div className="cw-unified-title-wrap">
+                  <BookOpen size={20} className="cw-unified-title-icon" />
+                  <h3 className="cw-unified-title">Coursework & Tasks</h3>
+                </div>
+                <Badge variant="primary">{totalBatchTasks} Total Tasks Assigned</Badge>
+              </div>
+
+              <div className="cw-unified-modules-stack">
+                <div className="cw-module-items-stack">
+                  {batchTasksList.length === 0 ? (
+                    <div className="admin-empty-state-card" style={{ padding: "40px 20px" }}>
+                      <BookOpen size={36} className="admin-empty-state-icon" style={{ margin: "0 auto 8px" }} />
+                      <p className="admin-empty-state-title">No tasks currently assigned</p>
+                      <p className="admin-empty-state-sub">Your mentor/admin will post new problem sets and assignments here.</p>
+                    </div>
+                  ) : (
+                    batchTasksList.map((task, idx) => {
+                      const taskSlug = task.taskNumber.replace(/\s+/g, '-').toLowerCase();
+                      const platform = task.platform || "coding";
+                      let taskHref = `/student/coding-platform/${taskSlug}`;
+                      if (platform === "mcq") taskHref = `/student/quiz`;
+                      else if (platform === "gd") taskHref = `/student/ai-interview`;
+                      else if (platform === "submission") taskHref = `/student/coding-platform`;
+
+                      return (
+                        <Link
+                          to={taskHref}
+                          state={{ task }}
+                          key={idx}
+                          className={`cw-item-row ${task.urgent ? "cw-item-row--urgent" : ""}`}
+                        >
+                          <div className="cw-item-left">
+                            <span className="cw-task-num-badge">{task.taskNumber}</span>
+                            {task.status === "Completed" ? (
+                              <CheckCircle2 size={18} className="cw-item-icon-done" />
+                            ) : (
+                              <Clock3 size={18} className="cw-item-icon-pending" />
+                            )}
+                            <div className="cw-item-title-col">
+                              <h5 className="cw-item-title">{task.title}</h5>
+                              <p className="cw-item-meta-sub">
+                                <span>{task.type}</span>
+                                <span>•</span>
+                                <span className={task.urgent ? "cw-item-due--urgent" : ""}>
+                                  {task.due}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="cw-item-right" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            {task.scoreObtained != null && (
+                              <span style={{ fontSize: "12px", fontWeight: 700, color: task.status === "Completed" ? "#16a34a" : "#d97706" }}>
+                                {task.scoreObtained} / {task.points} pts
+                              </span>
+                            )}
+                            <Badge
+                              variant={
+                                task.status === "Completed"
+                                  ? "success"
+                                  : task.status === "Partial"
+                                  ? "warning"
+                                  : task.urgent
+                                  ? "danger"
+                                  : "secondary"
+                              }
+                            >
+                              {task.status}
+                            </Badge>
+                          </div>
+                        </Link>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="cw-right-pane">
+            <div className="cw-leaderboard-card">
+              <div className="cw-section-header-row">
+                <div className="cw-lb-title-wrap">
+                  <Trophy size={18} className="cw-lb-icon" />
+                  <h3 className="cw-section-title">Batch Leaderboard</h3>
+                </div>
+                <Badge variant="outline">Top Performers</Badge>
+              </div>
+
+              <div className="cw-lb-list">
+                {selectedBatch.leaderboard.map((student) => (
+                  <div
+                    key={student.rank}
+                    className={`cw-lb-item ${student.self ? "cw-lb-item--self" : ""}`}
+                  >
+                    <div className="cw-lb-item-left">
+                      <span className={`cw-lb-rank ${student.rank <= 3 ? "cw-lb-rank--top" : ""}`}>
+                        #{student.rank}
+                      </span>
+                      <div className={`cw-lb-avatar ${student.self ? "cw-lb-avatar--self" : ""}`}>
+                        {student.initials}
+                      </div>
+                      <span className="cw-lb-name">{student.name}</span>
+                    </div>
+
+                    <span className="cw-lb-xp">{student.xp} XP</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const averageCompletion = (() => {
+    if (!enrolledBatches || enrolledBatches.length === 0) return 0;
+    const totalProg = enrolledBatches.reduce((acc, b) => {
+      const p = typeof b.progress === "number" ? b.progress : parseFloat(b.progress || 0);
+      return acc + (isNaN(p) ? 0 : p);
+    }, 0);
+    return Math.round(totalProg / enrolledBatches.length);
+  })();
+
+  const totalWeeklyHours = (() => {
+    if (!enrolledBatches || enrolledBatches.length === 0) return 0;
+    return enrolledBatches.reduce((acc, b) => {
+      const h = Number(b.weekly_hours || b.hours_per_week || b.weeklyHours || (b.status === "Active" ? 6 : 4));
+      return acc + (isNaN(h) ? 0 : h);
+    }, 0);
+  })();
+
+  const weeklyHoursText = totalWeeklyHours > 0 ? `${totalWeeklyHours} Hours / Wk` : "0 Hours";
+
+  return (
+    <div className="student-page-inner batches-page-container">
+      <div className="student-header-box">
+        <div className="student-header-left">
+          <h2 className="student-header-title" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Code2 size={24} style={{ color: "#2563eb", flexShrink: 0 }} />
+            <span>Enrolled Training Batches</span>
+          </h2>
+          <p className="student-header-desc">
+            View your active C2C batches, faculty-led sessions, curriculum completion rates, and learning resources.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="join-batch-header-btn"
+          onClick={() => {
+            setModalError("");
+            setModalSuccess("");
+            setShowJoinModal(true);
+          }}
+        >
+          <Plus size={16} /> Join Batch
+        </button>
+      </div>
+
+      {/* Summary KPI Bar */}
+      <div className="batches-summary-grid">
+        <div className="batches-summary-card">
+          <div className="batches-summary-icon-box batches-summary-icon-box--blue">
+            <Users size={22} />
+          </div>
+          <div>
+            <p className="batches-summary-label">Total Enrolled</p>
+            <h4 className="batches-summary-val">{enrolledBatches.length} Batch{enrolledBatches.length !== 1 ? "es" : ""}</h4>
+          </div>
+        </div>
+
+        <div className="batches-summary-card">
+          <div className="batches-summary-icon-box batches-summary-icon-box--emerald">
+            <CheckCircle2 size={22} />
+          </div>
+          <div>
+            <p className="batches-summary-label">Average Completion</p>
+            <h4 className="batches-summary-val">{averageCompletion}%</h4>
+          </div>
+        </div>
+
+        <div className="batches-summary-card">
+          <div className="batches-summary-icon-box batches-summary-icon-box--purple">
+            <Clock size={22} />
+          </div>
+          <div>
+            <p className="batches-summary-label">Weekly Hours</p>
+            <h4 className="batches-summary-val">{weeklyHoursText}</h4>
+          </div>
+        </div>
+      </div>
+
+      {/* Batches Content / Grid */}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>
+          Loading enrolled batches...
+        </div>
+      ) : enrolledBatches.length === 0 ? (
+        /* Empty state when student is not enrolled in any batch */
+        <div className="batches-empty-state">
+          <div className="batches-empty-icon-wrap">
+            <Users size={32} />
+          </div>
+          <h3 className="batches-empty-title">No Batches Joined</h3>
+          <p className="batches-empty-desc">
+            You haven't been enrolled in any training batches yet. Once your faculty coordinator assigns you to a batch, it will appear here.
+          </p>
+          <button
+            type="button"
+            className="batches-empty-join-btn"
+            onClick={() => {
+              setModalError("");
+              setModalSuccess("");
+              setShowJoinModal(true);
+            }}
+          >
+            <KeyRound size={15} />
+            <span>Join with Access Code</span>
+          </button>
+        </div>
+      ) : (
+        /* Enrolled Batches Grid */
+        <div className="batches-cards-grid">
+          {enrolledBatches.map((b) => {
+            const Icon = b.icon;
+            return (
+              <div key={b.id} className="batch-card" style={{ "--accent-color": b.color, "--accent-bg": b.bg }}>
+                <div>
+                  <div className="batch-card-top">
+                    <div
+                      className="batch-card-icon-wrap"
+                      style={{ background: b.bg, color: b.color }}
+                    >
+                      <Icon size={22} />
+                    </div>
+                    <Badge
+                      variant={b.status === "Inactive" ? "destructive" : (b.status === "Active" ? "primary" : "success")}
+                      className="batch-card-status-badge"
+                    >
+                      {b.status}
+                    </Badge>
+                  </div>
+
+                  <h3 className="batch-card-title">{b.title}</h3>
+                  <p className="batch-card-desc">{b.description}</p>
+                </div>
+
+                <div className="batch-meta-list">
+                  <div className="batch-meta-item">
+                    <span className="batch-meta-label">
+                      <BookOpen size={14} /> Batch Code
+                    </span>
+                    <span className="batch-meta-value">{b.code}</span>
+                  </div>
+
+                  <div className="batch-meta-item">
+                    <span className="batch-meta-label">
+                      <Users size={14} /> Instructor
+                    </span>
+                    <span className="batch-meta-value">{b.trainer}</span>
+                  </div>
+
+                  <div className="batch-meta-item">
+                    <span className="batch-meta-label">
+                      <Calendar size={14} /> Schedule
+                    </span>
+                    <span className="batch-meta-value">{b.timing}</span>
+                  </div>
+                </div>
+
+                <div className="batch-progress-section">
+                  <div className="batch-progress-top">
+                    <span className="batch-progress-label">Syllabus Progress</span>
+                    <span className="batch-progress-pct">{b.progress}%</span>
+                  </div>
+                  <div className="batch-progress-bar-bg">
+                    <div
+                      className="batch-progress-bar-fill"
+                      style={{
+                        width: `${b.progress}%`,
+                        background:
+                          b.status === "Completed"
+                            ? "linear-gradient(90deg, #059669 0%, #10b981 100%)"
+                            : "linear-gradient(90deg, #1d4ed8 0%, #2563eb 100%)",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="batch-card-actions">
+                  <button
+                    type="button"
+                    className="batch-open-btn"
+                    onClick={() => handleOpenBatch(b)}
+                  >
+                    <span>Open Coursework</span>
+                    <ArrowUpRight size={15} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Join Another Batch Card */}
+          <div
+            className="batch-card batch-card--join"
+            onClick={() => {
+              setModalError("");
+              setModalSuccess("");
+              setShowJoinModal(true);
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            <div>
+              <div className="batch-card-top">
+                <div className="batch-card-join-icon">
+                  <Plus size={22} />
+                </div>
+                <span className="batch-card-join-tag">New Cohort</span>
+              </div>
+
+              <h3 className="batch-card-title">Join Another Batch</h3>
+              <p className="batch-card-desc">
+                Have an access code for another cohort or training module? Enter your code to enroll in new coursework.
+              </p>
+            </div>
+
+            <div className="batch-card-join-hint-box">
+              <KeyRound size={15} />
+              <span>Enter enrollment code from your instructor</span>
+            </div>
+
+            <div className="batch-card-actions">
+              <button
+                type="button"
+                className="batch-card-join-action-btn"
+              >
+                <span>Enter Join Code</span>
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Join Batch Flash Overlay Modal ───────────────────────── */}
+      {showJoinModal && createPortal(
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowJoinModal(false); }}>
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <div className="modal-header-left">
+                <div className="modal-header-icon-wrap modal-header-icon--indigo">
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <h2 className="modal-title">Join a Training Batch</h2>
+                  <p className="modal-subtitle">Enter secret join access code assigned to your batch.</p>
+                </div>
+              </div>
+              <button className="modal-close-btn" onClick={() => setShowJoinModal(false)} title="Close Modal">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleJoinSubmit}>
+              <div className="modal-body">
+                {modalError && <div className="modal-feedback-alert modal-feedback--error">{modalError}</div>}
+                {modalSuccess && <div className="modal-feedback-alert modal-feedback--success">{modalSuccess}</div>}
+
+                <div className="form-group-admin">
+                  <label>Enter Batch Join Code *</label>
+                  <div className="modal-input-wrapper">
+                    <KeyRound size={17} className="modal-input-icon" />
+                    <input
+                      type="text"
+                      className="form-input-admin modal-input-with-icon"
+                      placeholder="e.g. PYSH-MTQZ"
+                      value={joinCodeInput}
+                      onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <span className="modal-helper-text">
+                    Codes are case-insensitive and assigned by administrators (e.g. PYSH-MTQZ).
+                  </span>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn-modal-cancel"
+                  onClick={() => setShowJoinModal(false)}
+                  disabled={joining}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-modal-submit"
+                  disabled={joining || !joinCodeInput.trim()}
+                >
+                  {joining ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" /> Joining...
+                    </>
+                  ) : (
+                    "Join Batch"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+

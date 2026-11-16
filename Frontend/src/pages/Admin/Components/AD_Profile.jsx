@@ -1,0 +1,691 @@
+import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { Check, User, Camera, Mail, Phone, Building, Briefcase, CheckCircle2, Save, ShieldCheck, Globe, Bell, Key, AlertCircle, QrCode, Copy, Loader2, X, Edit2 } from "lucide-react";
+import { Badge } from "../../../components/ui/Badge";
+import { apiFetch } from "../../../utils/api";
+import ChangePasswordModal from "../../../components/ui/ChangePasswordModal";
+import "../Styles/AD_Profile.css";
+
+export default function AdminProfile() {
+  const fileInputRef = useRef(null);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+
+  // 2FA Google Authenticator State
+  const [is2FASetupOpen, setIs2FASetupOpen] = useState(false);
+  const [loading2FASetup, setLoading2FASetup] = useState(false);
+  const [totpData, setTotpData] = useState(null);
+  const [totpCodeInput, setTotpCodeInput] = useState(["", "", "", "", "", ""]);
+  const [verifying2FA, setVerifying2FA] = useState(false);
+  const [totpError, setTotpError] = useState("");
+  const [totpSuccess, setTotpSuccess] = useState("");
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const [copiedSecret, setCopiedSecret] = useState(false);
+  const totpInputRefs = useRef([]);
+
+  const [form, setForm] = useState({
+    name: "System Administrator",
+    email: "admin@pvppcoe.ac.in",
+    phone: "+91 98765 43210",
+    role: "College Administrator",
+    department: "Computer Engineering",
+    college: "Padmabhushan Vasantdada Patil Pratishthan's College of Engineering (PVPPCOE)",
+    location: "Mumbai, Maharashtra",
+    notifSystemAlerts: true,
+    notifWeeklyReport: true,
+    notifNewUsers: true,
+  });
+
+  const loadProfile = async () => {
+    try {
+      const res = await apiFetch("/auth/me");
+      if (res && (res.user || res.data)) {
+        const u = res.user || res.data;
+        setForm((prev) => ({
+          ...prev,
+          name: u.name || prev.name,
+          email: u.email || prev.email,
+          phone: u.mobile_number || u.phone || prev.phone,
+          role: u.role ? (u.role.toLowerCase().includes("super") ? "Super Administrator" : "College Administrator") : prev.role,
+          department: u.department || prev.department,
+          college: u.college_name || u.college || prev.college,
+        }));
+        setIs2FAEnabled(Boolean(u.two_factor_enabled || u.two_factor_secret));
+      }
+    } catch (err) {
+      console.warn("Error loading admin profile:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const handleAvatarChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setAvatarUrl(url);
+    }
+  };
+
+  const handleOpen2FASetup = async () => {
+    setTotpError("");
+    setTotpSuccess("");
+    setTotpCodeInput(["", "", "", "", "", ""]);
+    setLoading2FASetup(true);
+    setIs2FASetupOpen(true);
+
+    try {
+      const res = await apiFetch("/auth/setup-2fa", { method: "POST" });
+      if (res && (res.data || res.qrCode)) {
+        setTotpData(res.data || res);
+      }
+    } catch (err) {
+      setTotpError(err.message || "Failed to generate Google Authenticator QR Code");
+    } finally {
+      setLoading2FASetup(false);
+    }
+  };
+
+  const handleCopySecret = () => {
+    if (totpData?.secret) {
+      navigator.clipboard.writeText(totpData.secret);
+      setCopiedSecret(true);
+      setTimeout(() => setCopiedSecret(false), 2000);
+    }
+  };
+
+  const handleTotpDigitChange = (index, value) => {
+    const cleanVal = value.replace(/\D/g, "").slice(-1);
+    const newCode = [...totpCodeInput];
+    newCode[index] = cleanVal;
+    setTotpCodeInput(newCode);
+
+    if (cleanVal && index < 5) {
+      totpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleTotpKeyDown = (index, e) => {
+    if (e.key === "Backspace" && !totpCodeInput[index] && index > 0) {
+      totpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleTotpPaste = (e) => {
+    e.preventDefault();
+    const pasteData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (pasteData) {
+      const digits = pasteData.split("");
+      const newCode = ["", "", "", "", "", ""];
+      digits.forEach((d, i) => {
+        newCode[i] = d;
+      });
+      setTotpCodeInput(newCode);
+      const nextIdx = Math.min(digits.length, 5);
+      totpInputRefs.current[nextIdx]?.focus();
+    }
+  };
+
+  const handleVerify2FASubmit = async (e) => {
+    e.preventDefault();
+    const code = totpCodeInput.join("");
+    if (code.length < 6) {
+      setTotpError("Please enter complete 6-digit Authenticator code.");
+      return;
+    }
+    setVerifying2FA(true);
+    setTotpError("");
+    setTotpSuccess("");
+
+    try {
+      const res = await apiFetch("/auth/verify-2fa", {
+        method: "POST",
+        body: JSON.stringify({
+          secret: totpData?.secret,
+          code: code,
+        }),
+      });
+
+      if (res && (res.success || res.data)) {
+        setTotpSuccess("Google Authenticator 2FA paired and activated successfully!");
+        setIs2FAEnabled(true);
+        setTimeout(() => {
+          setIs2FASetupOpen(false);
+        }, 1500);
+      } else {
+        setTotpError(res?.message || "Invalid Authenticator Code. Please check Google Authenticator.");
+      }
+    } catch (err) {
+      setTotpError(err.message || "Failed to verify 2FA code. Please try again.");
+    } finally {
+      setVerifying2FA(false);
+    }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+
+    try {
+      await apiFetch("/admin/profile", {
+        method: "PUT",
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
+          department: form.department,
+        }),
+      });
+
+      let localUser = {};
+      try { localUser = JSON.parse(sessionStorage.getItem("user") || localStorage.getItem("user")) || {}; } catch { }
+      const updatedUser = { ...localUser, name: form.name, email: form.email, phone: form.phone, department: form.department };
+      sessionStorage.setItem("user", JSON.stringify(updatedUser));
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      sessionStorage.setItem("adminProfile", JSON.stringify(updatedUser));
+      localStorage.setItem("adminProfile", JSON.stringify(updatedUser));
+
+      window.dispatchEvent(new Event("userProfileUpdated"));
+
+      setSaved(true);
+      setIsEditing(false);
+      setTimeout(() => setSaved(false), 4000);
+    } catch (err) {
+      console.error("Failed to save profile:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getInitials = (nameStr) => {
+    if (!nameStr) return "AD";
+    const parts = nameStr.trim().split(" ").filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return nameStr.substring(0, 2).toUpperCase();
+  };
+
+  return (
+    <div className="student-page-inner profile-container">
+      <div className="ui-section-header-AD">
+        <div className="ui-section-main-AD">
+          <div>
+            <h2 className="ui-section-title">
+              <User size={22} className="ui-section-title-icon" />
+              <span>My Profile & Settings</span>
+            </h2>
+            <p className="ui-section-desc">
+              Manage your account profile, institution credentials, and system settings.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {saved && (
+        <div className="profile-alert-success">
+          <CheckCircle2 size={18} />
+          <span>Profile changes and notification preferences saved successfully!</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className="profile-main-grid">
+        {/* LEFT COLUMN: Dossier Card */}
+        <div className="profile-dossier-card">
+          <div className="profile-avatar-section">
+            <div className="profile-avatar-wrap">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={form.name} className="profile-avatar-img" />
+              ) : (
+                <div className="profile-avatar-initials">{getInitials(form.name)}</div>
+              )}
+              {isEditing && (
+                <button
+                  type="button"
+                  className="profile-camera-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Change Avatar Image"
+                >
+                  <Camera size={14} />
+                </button>
+              )}
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                className="profile-file-input"
+                disabled={!isEditing}
+                onChange={handleAvatarChange}
+              />
+            </div>
+
+            <h2 className="profile-name">{form.name}</h2>
+            <div className="profile-roll-chip" style={{ marginBottom: '6px' }}>
+              <ShieldCheck size={14} />
+              <strong>{form.role}</strong>
+            </div>
+
+            <div className="profile-badges-wrap" style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <Badge variant="default">
+                {(form.college && form.college.match(/\(([^)]+)\)/)?.[1]) || (form.college && form.college.length <= 15 ? form.college : form.college?.split(' ')[0]) || "PVPPCOE"}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="profile-academic-divider" />
+
+          <div className="profile-academic-details">
+            <h4 className="profile-section-subtitle">Admin Details</h4>
+
+            <div className="profile-detail-row">
+              <Building size={16} className="profile-detail-icon" />
+              <div>
+                <span className="profile-detail-label">Institution</span>
+                <p className="profile-detail-value">{form.college}</p>
+              </div>
+            </div>
+
+            <div className="profile-detail-row">
+              <Briefcase size={16} className="profile-detail-icon" />
+              <div>
+                <span className="profile-detail-label">Department</span>
+                <p className="profile-detail-value">{form.department}</p>
+              </div>
+            </div>
+
+            <div className="profile-detail-row">
+              <Mail size={16} className="profile-detail-icon" />
+              <div>
+                <span className="profile-detail-label">Email</span>
+                <p className="profile-detail-value">{form.email}</p>
+              </div>
+            </div>
+
+            <div className="profile-detail-row">
+              <Phone size={16} className="profile-detail-icon" />
+              <div>
+                <span className="profile-detail-label">Phone</span>
+                <p className="profile-detail-value">{form.phone}</p>
+              </div>
+            </div>
+
+            <div className="profile-detail-row">
+              <Globe size={16} className="profile-detail-icon text-amber-500" />
+              <div>
+                <span className="profile-detail-label">Location</span>
+                <p className="profile-detail-value">{form.location}</p>
+              </div>
+            </div>
+
+            <div className="profile-change-pw-wrap">
+              <button
+                type="button"
+                className="profile-change-pw-btn"
+                onClick={() => setIsChangePasswordOpen(true)}
+              >
+                <Key size={15} />
+                <span>Change Password</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: Edit Profile Form */}
+        <div className="profile-form-card">
+          <div className="profile-form-section">
+            <div className="profile-section-heading profile-section-heading-flex">
+              <div className="profile-heading-group">
+                <User size={18} className="profile-heading-icon profile-icon-indigo" />
+                <div>
+                  <h3 className="profile-heading-title">{isEditing ? "Edit Personal & Contact Details" : "Personal & Contact Details"}</h3>
+                  <p className="profile-heading-desc">Saved directly to your college admin profile in MySQL database.</p>
+                </div>
+              </div>
+
+              <div className="profile-heading-actions">
+                {!isEditing ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="profile-edit-trigger-btn"
+                  >
+                    <Edit2 size={15} /> Edit Profile
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(false)}
+                      className="profile-cancel-btn"
+                    >
+                      <X size={15} /> Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="profile-save-btn"
+                      disabled={saving}
+                    >
+                      <Save size={15} /> {saving ? "Saving..." : "Save Profile"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="profile-form-grid">
+              <div className="profile-field">
+                <label className="profile-label">Full Name *</label>
+                <input
+                  type="text"
+                  className={`profile-input ${!isEditing ? 'profile-input-readonly' : ''}`}
+                  value={form.name}
+                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  readOnly={!isEditing}
+                  disabled={!isEditing}
+                  required
+                />
+              </div>
+
+              <div className="profile-field">
+                <label className="profile-label">Email Address *</label>
+                <input
+                  type="email"
+                  className={`profile-input ${!isEditing ? 'profile-input-readonly' : ''}`}
+                  value={form.email}
+                  onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                  readOnly={!isEditing}
+                  disabled={!isEditing}
+                  required
+                />
+              </div>
+
+              <div className="profile-field">
+                <label className="profile-label">Phone Number *</label>
+                <input
+                  type="text"
+                  className={`profile-input ${!isEditing ? 'profile-input-readonly' : ''}`}
+                  value={form.phone}
+                  onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+                  readOnly={!isEditing}
+                  disabled={!isEditing}
+                  required
+                />
+              </div>
+
+              <div className="profile-field">
+                <label className="profile-label profile-label-flex">
+                  Role / Designation <span className="profile-label-hint">(Read-Only)</span>
+                </label>
+                <input
+                  type="text"
+                  className="profile-input profile-input-readonly"
+                  value={form.role}
+                  readOnly
+                  disabled
+                />
+              </div>
+
+              <div className="profile-field">
+                <label className="profile-label">Department</label>
+                <input
+                  type="text"
+                  className={`profile-input ${!isEditing ? 'profile-input-readonly' : ''}`}
+                  value={form.department}
+                  onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
+                  readOnly={!isEditing}
+                  disabled={!isEditing}
+                />
+              </div>
+
+              <div className="profile-field">
+                <label className="profile-label">Institution / Organization</label>
+                <input
+                  type="text"
+                  className={`profile-input ${!isEditing ? 'profile-input-readonly' : ''}`}
+                  value={form.college}
+                  onChange={(e) => setForm((p) => ({ ...p, college: e.target.value }))}
+                  readOnly={!isEditing}
+                  disabled={!isEditing}
+                />
+              </div>
+            </div>
+
+            {/* Alert Preferences */}
+            <div className="sa-profile-alerts-section mt-6">
+              <div className="sa-profile-alerts-header">
+                <Bell size={16} className="sa-profile-alert-icon" />
+                <h4 className="sa-profile-alert-heading">Notification & Alert Preferences</h4>
+              </div>
+
+              <div className="profile-toggle-list profile-toggle-list-sm">
+                <div className="profile-toggle-item profile-toggle-item-sm">
+                  <div className="profile-toggle-text">
+                    <span className="profile-toggle-title profile-toggle-title-sm">System Security Alerts</span>
+                  </div>
+                  <label className="profile-switch">
+                    <input
+                      type="checkbox"
+                      checked={form.notifSystemAlerts}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setForm((p) => {
+                          const updated = { ...p, notifSystemAlerts: val };
+                          const prefs = {
+                            notifSystemAlerts: val,
+                            notifWeeklyReport: p.notifWeeklyReport,
+                            notifNewUsers: p.notifNewUsers,
+                          };
+                          sessionStorage.setItem("adminNotifPrefs", JSON.stringify(prefs));
+                          window.dispatchEvent(new CustomEvent("adminNotifPrefsUpdated", { detail: prefs }));
+                          return updated;
+                        });
+                      }}
+                    />
+                    <span className="profile-slider round" />
+                  </label>
+                </div>
+
+                <div className="profile-toggle-item profile-toggle-item-sm">
+                  <div className="profile-toggle-text">
+                    <span className="profile-toggle-title profile-toggle-title-sm">Weekly Audit Digest</span>
+                  </div>
+                  <label className="profile-switch">
+                    <input
+                      type="checkbox"
+                      checked={form.notifWeeklyReport}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setForm((p) => {
+                          const updated = { ...p, notifWeeklyReport: val };
+                          const prefs = {
+                            notifSystemAlerts: p.notifSystemAlerts,
+                            notifWeeklyReport: val,
+                            notifNewUsers: p.notifNewUsers,
+                          };
+                          sessionStorage.setItem("adminNotifPrefs", JSON.stringify(prefs));
+                          window.dispatchEvent(new CustomEvent("adminNotifPrefsUpdated", { detail: prefs }));
+                          return updated;
+                        });
+                      }}
+                    />
+                    <span className="profile-slider round" />
+                  </label>
+                </div>
+
+                <div className="profile-toggle-item profile-toggle-item-sm">
+                  <div className="profile-toggle-text">
+                    <span className="profile-toggle-title profile-toggle-title-sm">New User Enrollment</span>
+                  </div>
+                  <label className="profile-switch">
+                    <input
+                      type="checkbox"
+                      checked={form.notifNewUsers}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setForm((p) => {
+                          const updated = { ...p, notifNewUsers: val };
+                          const prefs = {
+                            notifSystemAlerts: p.notifSystemAlerts,
+                            notifWeeklyReport: p.notifWeeklyReport,
+                            notifNewUsers: val,
+                          };
+                          sessionStorage.setItem("adminNotifPrefs", JSON.stringify(prefs));
+                          window.dispatchEvent(new CustomEvent("adminNotifPrefsUpdated", { detail: prefs }));
+                          return updated;
+                        });
+                      }}
+                    />
+                    <span className="profile-slider round" />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
+
+      {/* Google Authenticator 2FA Modal */}
+      {is2FASetupOpen && createPortal(
+        <div className="modal-overlay profile-2fa-modal-overlay">
+          <div className="modal-dialog profile-2fa-modal-dialog">
+            <div className="profile-2fa-modal-header">
+              <div className="profile-2fa-modal-title-wrap">
+                <div className="profile-2fa-modal-icon">
+                  <QrCode size={20} />
+                </div>
+                <div>
+                  <h3 className="profile-2fa-modal-title">Google Authenticator 2FA</h3>
+                  <p className="profile-2fa-modal-subtitle">Scan QR code to pair your account</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIs2FASetupOpen(false)}
+                className="profile-2fa-modal-close-btn"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {loading2FASetup ? (
+              <div className="profile-2fa-modal-loading">
+                <Loader2 size={32} className="animate-spin profile-2fa-loader-spinner" />
+                <p className="profile-2fa-loading-text">Generating Google Authenticator QR Code...</p>
+              </div>
+            ) : (
+              <form onSubmit={handleVerify2FASubmit}>
+                {totpError && (
+                  <div className="profile-2fa-alert-error">
+                    {totpError}
+                  </div>
+                )}
+
+                {totpSuccess && (
+                  <div className="profile-2fa-alert-success">
+                    <CheckCircle2 size={16} />
+                    <span>{totpSuccess}</span>
+                  </div>
+                )}
+
+                {/* QR Code Container */}
+                <div className="profile-2fa-qr-box">
+                  {totpData?.qrCode ? (
+                    <img
+                      src={totpData.qrCode}
+                      alt="Google Authenticator QR Code"
+                      className="profile-2fa-qr-img"
+                    />
+                  ) : (
+                    <div className="profile-2fa-qr-placeholder">
+                      <QrCode size={40} className="profile-2fa-qr-icon" />
+                    </div>
+                  )}
+                  <p className="profile-2fa-qr-text">
+                    Open <strong>Google Authenticator</strong> or <strong>Microsoft Authenticator</strong> app on your phone and scan this QR code.
+                  </p>
+                </div>
+
+                {/* Secret Key Copy Bar */}
+                {totpData?.secret && (
+                  <div className="profile-2fa-secret-box">
+                    <label className="profile-2fa-secret-label">
+                      Or enter Secret Key manually:
+                    </label>
+                    <div className="profile-2fa-secret-row">
+                      <code className="profile-2fa-secret-code">
+                        {totpData.secret.match(/.{1,4}/g)?.join(" ") || totpData.secret}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={handleCopySecret}
+                        className="profile-2fa-copy-btn"
+                      >
+                        {copiedSecret ? <Check size={12} className="profile-copy-check-icon" /> : <Copy size={12} />}
+                        {copiedSecret ? "Copied" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 6-Digit Code Input */}
+                <div className="profile-2fa-code-input-section">
+                  <label className="profile-2fa-code-label">
+                    Enter 6-Digit Authenticator Verification Code:
+                  </label>
+                  <div className="profile-2fa-digit-row" onPaste={handleTotpPaste}>
+                    {totpCodeInput.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={(el) => (totpInputRefs.current[idx] = el)}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleTotpDigitChange(idx, e.target.value)}
+                        onKeyDown={(e) => handleTotpKeyDown(idx, e)}
+                        className="profile-2fa-digit-input"
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="profile-2fa-modal-actions">
+                  <button
+                    type="button"
+                    onClick={() => setIs2FASetupOpen(false)}
+                    className="profile-2fa-modal-cancel-btn"
+                    disabled={verifying2FA}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="profile-2fa-modal-submit-btn"
+                    disabled={verifying2FA}
+                  >
+                    {verifying2FA ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" /> Verifying...
+                      </>
+                    ) : (
+                      "Verify & Enable 2FA"
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}

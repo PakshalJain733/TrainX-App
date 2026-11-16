@@ -1,0 +1,413 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { Bot, Search, Filter, TrendingUp, Award, AlertCircle, FileText, Eye, X, CheckCircle2, BrainCircuit, UserCheck, Sparkles, RefreshCw } from "lucide-react";
+import { apiFetch } from '../../../utils/api';
+import CustomSelect from '../../../components/ui/CustomSelect';
+import '../Styles/MN_AIInterviews.css';
+
+const ROLE_OPTIONS = [
+  { value: 'ALL', label: 'All Roles / Topics' },
+  { value: 'Software Engineer', label: 'Software Engineer' },
+  { value: 'Full Stack', label: 'Full Stack Developer' },
+  { value: 'Backend', label: 'Backend Developer' },
+  { value: 'Frontend', label: 'Frontend Developer' },
+  { value: 'Data Structures', label: 'DSA & Algorithms' },
+  { value: 'SQL', label: 'SQL & Databases' },
+  { value: 'DevOps', label: 'DevOps & Cloud' },
+];
+
+const GRADE_OPTIONS = [
+  { value: 'ALL', label: 'All Grades' },
+  { value: 'EXCELLENT', label: 'Excellent (≥80%)' },
+  { value: 'GOOD', label: 'Good (60%-79%)' },
+  { value: 'NEEDS_WORK', label: 'Needs Work (<60%)' },
+];
+
+const unwrap = (response) => {
+  if (!response || response.error) return null;
+  return response.data !== undefined ? response.data : response;
+};
+
+const MOCK_MENTEE_INTERVIEWS = [];
+
+export default function MN_AIInterviews() {
+  const [interviews, setInterviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const [gradeFilter, setGradeFilter] = useState('ALL');
+  const [selectedSession, setSelectedSession] = useState(null);
+
+  const fetchInterviews = async () => {
+    setLoading(true);
+    try {
+      const response = await apiFetch('/mentor/interviews');
+      const payload = unwrap(response);
+      setInterviews(Array.isArray(payload) ? payload : []);
+    } catch (err) {
+      console.warn('[MN_AIInterviews] Error loading interviews:', err);
+      setInterviews([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInterviews();
+  }, []);
+
+  const filteredInterviews = useMemo(() => {
+    return interviews.filter((item) => {
+      const term = search.toLowerCase().trim();
+      const nameMatch = (item.studentName || '').toLowerCase().includes(term);
+      const rollMatch = (item.rollNo || '').toLowerCase().includes(term);
+      const batchMatch = (item.batch || '').toLowerCase().includes(term);
+      const searchOk = !term || nameMatch || rollMatch || batchMatch;
+
+      const roleMatch =
+        roleFilter === 'ALL' ||
+        (item.targetRole || '').toLowerCase().includes(roleFilter.toLowerCase()) ||
+        (item.topic || '').toLowerCase().includes(roleFilter.toLowerCase());
+
+      let gradeMatch = true;
+      if (gradeFilter === 'EXCELLENT') gradeMatch = item.score >= 80;
+      else if (gradeFilter === 'GOOD') gradeMatch = item.score >= 60 && item.score < 80;
+      else if (gradeFilter === 'NEEDS_WORK') gradeMatch = item.score < 60;
+
+      return searchOk && roleMatch && gradeMatch;
+    });
+  }, [interviews, search, roleFilter, gradeFilter]);
+
+  const stats = useMemo(() => {
+    const total = interviews.length;
+    if (total === 0) return { total: 0, avgScore: 0, topPerformers: 0, needsSupport: 0 };
+    const scoreSum = interviews.reduce((acc, curr) => acc + (Number(curr.score) || 0), 0);
+    const avgScore = Math.round((scoreSum / total) * 10) / 10;
+    const topPerformers = interviews.filter((i) => (Number(i.score) || 0) >= 80).length;
+    const needsSupport = interviews.filter((i) => (Number(i.score) || 0) < 60).length;
+    return { total, avgScore, topPerformers, needsSupport };
+  }, [interviews]);
+
+  const getScoreBadgeClass = (score) => {
+    const val = Number(score) || 0;
+    if (val >= 80) return 'mn-ai-score-pill--high';
+    if (val >= 60) return 'mn-ai-score-pill--med';
+    return 'mn-ai-score-pill--low';
+  };
+
+  const getGradeBadgeClass = (score) => {
+    const val = Number(score) || 0;
+    if (val >= 80) return 'mn-ai-grade-badge--excellent';
+    if (val >= 60) return 'mn-ai-grade-badge--good';
+    return 'mn-ai-grade-badge--needswork';
+  };
+
+  return (
+    <div className="mentor-ai-interviews-container">
+      {/* Header */}
+      <div className="mentor-page-header mentor-ai-page-header">
+        <div>
+          <h2 className="mentor-page-title">
+            <Bot size={22} color="#4f46e5" />
+            <span>Mentee AI Interview Progress</span>
+          </h2>
+          <p className="mentor-page-subtitle">
+            Track & evaluate AI mock interview performances, technical scores, and AI feedback for your assigned mentees
+          </p>
+        </div>
+        <div className="mn-ai-header-badge">
+          <Sparkles size={14} color="#6366f1" />
+          <span>Mentee Analytics Active</span>
+        </div>
+      </div>
+
+      {/* KPI Stats Bar */}
+      <div className="mn-ai-stats-grid">
+        <div className="mn-ai-stat-card">
+          <div className="mn-ai-stat-icon mn-ai-stat-icon--indigo">
+            <FileText size={20} />
+          </div>
+          <div className="mn-ai-stat-info">
+            <span className="mn-ai-stat-label">Total AI Interviews</span>
+            <span className="mn-ai-stat-value">{stats.total}</span>
+          </div>
+        </div>
+
+        <div className="mn-ai-stat-card">
+          <div className="mn-ai-stat-icon mn-ai-stat-icon--blue">
+            <TrendingUp size={20} />
+          </div>
+          <div className="mn-ai-stat-info">
+            <span className="mn-ai-stat-label">Average Mentee Score</span>
+            <span className="mn-ai-stat-value">{stats.avgScore}%</span>
+          </div>
+        </div>
+
+        <div className="mn-ai-stat-card">
+          <div className="mn-ai-stat-icon mn-ai-stat-icon--green">
+            <Award size={20} />
+          </div>
+          <div className="mn-ai-stat-info">
+            <span className="mn-ai-stat-label">Top Performers (≥80%)</span>
+            <span className="mn-ai-stat-value">{stats.topPerformers}</span>
+          </div>
+        </div>
+
+        <div className="mn-ai-stat-card">
+          <div className="mn-ai-stat-icon mn-ai-stat-icon--rose">
+            <AlertCircle size={20} />
+          </div>
+          <div className="mn-ai-stat-info">
+            <span className="mn-ai-stat-label">Needs Support (&lt;60%)</span>
+            <span className="mn-ai-stat-value">{stats.needsSupport}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter and Search Toolbar */}
+      <div className="mn-ai-filter-card">
+        <div className="mn-ai-search-box">
+          <Search size={16} className="mn-ai-search-icon" />
+          <input
+            type="text"
+            placeholder="Search by mentee name, roll no, or batch..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className="mn-ai-search-clear" onClick={() => setSearch('')}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <div className="mn-ai-filters-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ minWidth: '190px' }}>
+            <CustomSelect
+              value={roleFilter}
+              options={ROLE_OPTIONS}
+              onChange={(val) => setRoleFilter(val)}
+              icon={Filter}
+            />
+          </div>
+
+          <div style={{ minWidth: '160px' }}>
+            <CustomSelect
+              value={gradeFilter}
+              options={GRADE_OPTIONS}
+              onChange={(val) => setGradeFilter(val)}
+            />
+          </div>
+
+          <button className="mn-ai-refresh-btn" onClick={fetchInterviews} title="Refresh Mentee Interviews">
+            <RefreshCw size={15} className={loading ? 'mentor-ai-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {/* Mentee Interview Results Table */}
+      <div className="mn-ai-table-card">
+        {loading ? (
+          <div className="mn-ai-loading-state">
+            <RefreshCw size={24} className="mentor-ai-spin" color="#4f46e5" />
+            <span>Loading mentee interview progress...</span>
+          </div>
+        ) : filteredInterviews.length === 0 ? (
+          <div className="mn-ai-empty-state">
+            <BrainCircuit size={40} color="#cbd5e1" />
+            <h4>No Mentee Interview Records Found</h4>
+            <p>No mentee interview sessions match your current search and filter criteria.</p>
+          </div>
+        ) : (
+          <div className="mn-ai-table-wrapper">
+            <table className="mn-ai-table">
+              <thead>
+                <tr>
+                  <th>Mentee Student</th>
+                  <th>Batch / Roll No</th>
+                  <th>Target Role & Topic</th>
+                  <th>Overall Score</th>
+                  <th>Performance Grade</th>
+                  <th>AI Evaluation Summary</th>
+                  <th>Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInterviews.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <div className="mn-ai-student-cell">
+                        <div className="mn-ai-avatar">
+                          {item.studentName ? item.studentName.charAt(0).toUpperCase() : 'S'}
+                        </div>
+                        <div className="mn-ai-student-info">
+                          <span className="mn-ai-student-name">{item.studentName || 'Student'}</span>
+                          <span className="mn-ai-student-sub">{item.studentEmail || 'Mentee'}</span>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div className="mn-ai-batch-cell">
+                        <span className="mn-ai-batch-name">{item.batch || 'Batch A'}</span>
+                        <span className="mn-ai-roll-no">{item.rollNo || 'N/A'}</span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div className="mn-ai-role-cell">
+                        <span className="mn-ai-role-title">{item.targetRole || 'Software Engineer'}</span>
+                        <span className="mn-ai-topic-tag">{item.topic || 'General Mock'}</span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div className="mn-ai-score-cell">
+                        <span className={`mn-ai-score-pill ${getScoreBadgeClass(item.score)}`}>
+                          {item.score}%
+                        </span>
+                        <div className="mn-ai-score-bar-bg">
+                          <div
+                            className={`mn-ai-score-bar-fill ${getScoreBadgeClass(item.score)}`}
+                            style={{ width: `${Math.min(item.score, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+
+                    <td>
+                      <span className={`mn-ai-grade-badge ${getGradeBadgeClass(item.score)}`}>
+                        {item.grade || (item.score >= 80 ? 'Excellent' : item.score >= 60 ? 'Good' : 'Needs Work')}
+                      </span>
+                    </td>
+
+                    <td className="mn-ai-feedback-cell">
+                      <p className="mn-ai-feedback-text">
+                        {item.feedback || 'Completed AI interview evaluation session.'}
+                      </p>
+                    </td>
+
+                    <td>
+                      <span className="mn-ai-date">{item.date || 'Recent'}</span>
+                    </td>
+
+                    <td>
+                      <button
+                        className="mn-ai-view-btn"
+                        onClick={() => setSelectedSession(item)}
+                        title="View Detailed AI Evaluation Report"
+                      >
+                        <Eye size={14} />
+                        <span>Details</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* AI Evaluation Detail Modal */}
+      {selectedSession && createPortal(
+        <div 
+          className="mn-ai-modal-overlay" 
+          style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', animation: 'fadeIn 0.2s ease-out' }}
+          onClick={() => setSelectedSession(null)}
+        >
+          <div 
+            className="mn-ai-modal-card" 
+            style={{ background: '#ffffff', width: '100%', maxWidth: '800px', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden', maxHeight: 'calc(100vh - 48px)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mn-ai-modal-header">
+              <div className="mn-ai-modal-header-left">
+                <div className="mn-ai-modal-avatar">
+                  {selectedSession.studentName ? selectedSession.studentName.charAt(0).toUpperCase() : 'S'}
+                </div>
+                <div>
+                  <h3 className="mn-ai-modal-title">{selectedSession.studentName}</h3>
+                  <p className="mn-ai-modal-sub">
+                    {selectedSession.rollNo} • {selectedSession.batch}
+                  </p>
+                </div>
+              </div>
+              <button className="mn-ai-modal-close" onClick={() => setSelectedSession(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mn-ai-modal-body" style={{ overflowY: 'auto', flex: 1 }}>
+              <div className="mn-ai-modal-meta-grid">
+                <div className="mn-ai-meta-item">
+                  <span className="mn-ai-meta-label">Target Role</span>
+                  <span className="mn-ai-meta-val">{selectedSession.targetRole}</span>
+                </div>
+                <div className="mn-ai-meta-item">
+                  <span className="mn-ai-meta-label">Interview Topic</span>
+                  <span className="mn-ai-meta-val">{selectedSession.topic}</span>
+                </div>
+                <div className="mn-ai-meta-item">
+                  <span className="mn-ai-meta-label">Technical Score</span>
+                  <span className={`mn-ai-meta-score ${getScoreBadgeClass(selectedSession.score)}`}>
+                    {selectedSession.score}%
+                  </span>
+                </div>
+                <div className="mn-ai-meta-item">
+                  <span className="mn-ai-meta-label">Grade Status</span>
+                  <span className={`mn-ai-grade-badge ${getGradeBadgeClass(selectedSession.score)}`}>
+                    {selectedSession.grade}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mn-ai-modal-section">
+                <h4>
+                  <BrainCircuit size={16} color="#4f46e5" />
+                  <span>AI Interviewer Evaluation Report</span>
+                </h4>
+                <div className="mn-ai-report-box">
+                  <p>{selectedSession.feedback}</p>
+                </div>
+              </div>
+
+              <div className="mn-ai-modal-section">
+                <h4>
+                  <CheckCircle2 size={16} color="#10b981" />
+                  <span>Mentor Action & Guidance Notes</span>
+                </h4>
+                <ul className="mn-ai-guidance-list">
+                  {selectedSession.score >= 80 ? (
+                    <>
+                      <li>Mentee demonstrates high technical readiness for live placement rounds.</li>
+                      <li>Encourage advanced system design topics and mock behavioral rounds.</li>
+                    </>
+                  ) : selectedSession.score >= 60 ? (
+                    <>
+                      <li>Review identified weak topics during weekly 1-on-1 mentorship session.</li>
+                      <li>Assign targeted practice coding problems related to {selectedSession.topic}.</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>High priority remediation required for core fundamentals in {selectedSession.topic}.</li>
+                      <li>Schedule immediate review session and assign prerequisite learning roadmap.</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+            </div>
+
+            <div className="mn-ai-modal-footer" style={{ borderTop: '1px solid #f1f5f9', background: '#ffffff' }}>
+              <button className="mn-ai-modal-dismiss-btn" onClick={() => setSelectedSession(null)}>
+                Close Report
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
