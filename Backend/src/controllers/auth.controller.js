@@ -145,6 +145,23 @@ export const passwordLogin = async (req, res, next) => {
 export const getMe = async (req, res, next) => {
   try {
     const userId = req.user.userId || req.user.id;
+    const role = req.user.role;
+    const email = req.user.email;
+
+    const envSuperEmail = (process.env.SUPER_ADMIN_EMAIL || 'trainx.admin@gmail.com').trim().toLowerCase();
+    if (role === 'super_admin' || email?.toLowerCase() === envSuperEmail) {
+      return sendSuccess(res, 'User profile retrieved successfully', {
+        id: userId || 1,
+        userId: userId || 1,
+        name: req.user.name || process.env.SUPER_ADMIN_NAME || 'Super Admin',
+        email: email || envSuperEmail,
+        mobile_number: req.user.mobile || '9876543210',
+        role: 'super_admin',
+        is_active: 1,
+        is_profile_updated: true,
+      });
+    }
+
     const user = await findUserById(userId);
     if (!user) {
       return sendError(res, 'User not found', 404);

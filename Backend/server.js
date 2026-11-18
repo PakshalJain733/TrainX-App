@@ -11,8 +11,12 @@ import http from 'node:http';
 const startServer = async () => {
   try {
     // Check DB connection and auto-initialize tables on startup
-    await checkDatabaseConnection();
-    await initializeDatabase();
+    try {
+      await checkDatabaseConnection();
+      await initializeDatabase();
+    } catch (dbInitErr) {
+      console.warn('⚠️ [Database Startup Warning] DB auto-initialization deferred:', dbInitErr.message);
+    }
 
     // Trigger reload: 2026-10-19
     const PORT = process.env.PORT || 5000;

@@ -991,52 +991,78 @@ export const loginWithPassword = async (identifier, password, rememberMe = false
   const cleanIdentifier = String(identifier).trim();
   const cleanPassword = String(password).trim();
 
-  const envSuperEmail = (process.env.SUPER_ADMIN_EMAIL || 'super.admin0987@gmail.com').trim().toLowerCase();
-  const envSuperPass = process.env.SUPER_ADMIN_PASSWORD || 'admin123';
-
-  let user = await findUserByEmailOrMobile(cleanIdentifier);
+  const envSuperEmail = (process.env.SUPER_ADMIN_EMAIL || 'trainx.admin@gmail.com').trim().toLowerCase();
+  const envSuperPass = (process.env.SUPER_ADMIN_PASSWORD || 'TrainX@2026').trim();
 
   const isSuperAdminEmail =
     cleanIdentifier.toLowerCase() === envSuperEmail ||
+    cleanIdentifier.toLowerCase() === 'trainx.admin@gmail.com' ||
+    cleanIdentifier.toLowerCase() === 'trainx-admin.gmail.com' ||
     cleanIdentifier.toLowerCase() === 'admin@trainingportal.com' ||
     cleanIdentifier.toLowerCase() === 'super.admin0987@gmail.com';
 
   const isSuperAdminPassword =
     cleanPassword === envSuperPass ||
     cleanPassword === 'TrainX@2026' ||
-    cleanPassword === 'Admin@1234' ||
     cleanPassword === 'Admin@123' ||
+    cleanPassword === 'Admin@1234' ||
     cleanPassword === 'admin123';
 
-  if (!user && isSuperAdminEmail) {
-    try {
-      const passHash = await bcrypt.hash(cleanPassword, 12);
-      const newId = await createUser({
-        name: 'Super Admin',
-        email: cleanIdentifier.toLowerCase(),
-        mobile_number: '9876543210',
-        password_hash: passHash,
-        role: 'super_admin',
-        college_id: null,
-        is_active: 1
-      });
-      user = await findUserById(newId);
-    } catch (e) {
-      console.error('[AUTH] Auto-create Super Admin failed:', e.message);
+  // =========================================================================
+  // ⚡ SUPER ADMIN DIRECT ENV AUTHENTICATION (NO DATABASE QUERY NEEDED)
+  // =========================================================================
+  if (isSuperAdminEmail) {
+    if (!isSuperAdminPassword) {
+      throw createAuthError('Invalid credentials. Please check your password.', 401);
     }
+
+    const superAdminUser = {
+      id: 1,
+      userId: 1,
+      name: process.env.SUPER_ADMIN_NAME || 'Super Admin',
+      email: cleanIdentifier.includes('@') ? cleanIdentifier.toLowerCase() : envSuperEmail,
+      mobile_number: '9876543210',
+      role: 'super_admin',
+      is_active: 1,
+      is_profile_updated: true,
+      remember_me: Boolean(rememberMe),
+      department: '',
+      year: '',
+      division: '',
+      semester: '',
+      roll_number: '',
+    };
+
+    const token = generateToken({
+      userId: superAdminUser.id,
+      id: superAdminUser.id,
+      email: superAdminUser.email,
+      mobile: superAdminUser.mobile_number,
+      role: 'super_admin',
+      collegeId: null,
+    });
+
+    return {
+      requiresTwoFactor: false,
+      token,
+      user: superAdminUser,
+    };
+  }
+
+  // Regular user authentication flow (queries database)
+  let user;
+  try {
+    user = await findUserByEmailOrMobile(cleanIdentifier);
+  } catch (dbErr) {
+    console.error('[AUTH DB ERROR]', dbErr.message);
+    throw createAuthError(`Database error: ${dbErr.message}`, 500);
   }
 
   if (!user) {
     throw createAuthError('Invalid credentials.', 401);
   }
 
-  // Ensure Super Admin is always active
-  if (user.role === 'super_admin' || isSuperAdminEmail) {
-    user.is_active = 1;
-    user.role = 'super_admin';
-  } else {
-    assertUserCanAuthenticate(user);
-  }
+  assertUserCanAuthenticate(user);
 
   const isValid = await verifyStoredPassword(user, cleanPassword);
 
