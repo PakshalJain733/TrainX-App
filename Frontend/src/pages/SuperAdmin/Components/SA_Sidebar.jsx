@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Building2, Briefcase, Code2, Users, UserCog, UserCheck, SlidersHorizontal, Activity, HelpCircle, FileCheck2 } from "lucide-react";
+import { LayoutDashboard, Building2, Briefcase, Code2, Users, UserCog, UserCheck, SlidersHorizontal, Activity, HelpCircle, FileCheck2, Smartphone } from "lucide-react";
 import logoImg from "../../../assets/Logo.png";
 import trainXImg from "../../../assets/TrainX.png";
 import "../Styles/SA_Sidebar.css";
@@ -83,6 +83,17 @@ export default function SuperAdminSidebar({ collapsed, mobileOpen, onClose }) {
       <div className="sidebar-footer">
         <ul className="sidebar-menu">
           {footerNavItems.map(renderItem)}
+          <li className="sidebar-menu-item sa-sidebar-download-item">
+            <a
+              href="/TrainX.apk"
+              download="TrainX_Student_v1.0.apk"
+              className="sidebar-menu-btn-sa sa-sidebar-download-btn"
+              title="Download Android APK"
+            >
+              <Smartphone size={18} className="sidebar-icon-sa" />
+              {(!collapsed || mobileOpen) && <span className="sidebar-label-sa">Download App</span>}
+            </a>
+          </li>
         </ul>
       </div>
     </aside>

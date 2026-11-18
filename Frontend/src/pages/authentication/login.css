@@ -2573,3 +2573,73 @@ input::-ms-clear {
     font-size: 12.5px !important;
   }
 }
+/* -- Mobile App Download Card in Login -- */
+.login-app-download-banner {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed #e2e8f0;
+  width: 100%;
+}
+
+.login-app-download-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  text-decoration: none !important;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.login-app-download-btn:hover {
+  background: #f0f7ff;
+  border-color: #0053c0;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 83, 192, 0.08);
+}
+
+.login-app-download-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #0f2942 0%, #0053c0 100%);
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.login-app-download-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.login-app-download-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.login-app-download-sub {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.login-app-download-arrow {
+  color: #0053c0;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.login-app-download-btn:hover .login-app-download-arrow {
+  transform: translateY(2px);
+}

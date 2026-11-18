@@ -301,6 +301,39 @@ body {
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.22);
 }
 
+.sa-header__download-app-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #0f2942 0%, #0053c0 100%);
+  border: 1px solid rgba(0, 83, 192, 0.4);
+  color: #ffffff !important;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 83, 192, 0.25);
+}
+
+.sa-header__download-app-btn:hover {
+  background: linear-gradient(135deg, #0053c0 0%, #0284c7 100%);
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 83, 192, 0.35);
+}
+
+.sa-download-phone-icon {
+  color: #38bdf8;
+}
+
+.sa-download-arrow-icon {
+  color: rgba(255, 255, 255, 0.85);
+  margin-left: 2px;
+}
+
 
 .superadmin-header__icon-btn {
   position: relative;
