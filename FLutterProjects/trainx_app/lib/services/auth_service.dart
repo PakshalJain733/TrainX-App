@@ -13,19 +13,13 @@ class AuthService {
         final user = payload['user'] ?? payload;
         final token = payload['token'] ?? '';
 
-        final role = (user['role'] ?? '').toString().toLowerCase();
-        if (role.isNotEmpty && role != 'student') {
-          return {
-            'success': false,
-            'message': 'Access restricted: Only registered students can log in here.',
-          };
-        }
+        final role = (user['role'] ?? 'user').toString().toLowerCase();
 
-        // Save student session locally
+        // Save session locally
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('token', token.toString());
         await prefs.setString('userId', (user['id'] ?? '').toString());
-        await prefs.setString('studentName', (user['name'] ?? 'Student').toString());
+        await prefs.setString('studentName', (user['name'] ?? 'User').toString());
         await prefs.setString('studentEmail', (user['email'] ?? '').toString());
         await prefs.setString('studentRole', role);
         await prefs.setString('department', (user['department'] ?? '').toString());
