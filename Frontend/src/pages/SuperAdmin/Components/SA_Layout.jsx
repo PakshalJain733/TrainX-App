@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { PanelLeft, Bell, Search, UserCog, LogOut, Check, Calendar, AlertTriangle, CheckCircle2, FileText, Trash2, Key, Clock, User } from "lucide-react";
+import { PanelLeft, Bell, Search, UserCog, LogOut, Check, Calendar, AlertTriangle, CheckCircle2, FileText, Trash2, Key, Clock, User, Smartphone, Download } from "lucide-react";
 import SuperAdminSidebar from "./SA_Sidebar";
 import GlobalHeaderSearch from '../../../components/Common/GlobalHeaderSearch';
 import RouteLoadingFallback from "../../../components/Common/RouteLoadingFallback";
@@ -554,6 +554,18 @@ export default function SuperAdminLayout() {
               </div>
 
               <div className="sa-header__right" ref={headerRightRef}>
+                {/* Download Android App Button */}
+                <a
+                  href="/TrainX.apk"
+                  download="TrainX_Student_v1.0.apk"
+                  className="sa-header__download-app-btn"
+                  title="Download TrainX Student Android App (.apk)"
+                >
+                  <Smartphone size={15} className="sa-download-phone-icon" />
+                  <span>Download App</span>
+                  <Download size={13} className="sa-download-arrow-icon" />
+                </a>
+
                 {/* Notification Bell */}
                 <div className="sa-header__notif-wrap">
                   <button

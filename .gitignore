@@ -18,6 +18,7 @@ out/
 .cache/
 .vite/
 coverage/
+*.apk
 
 # Logs
 logs/

@@ -68,6 +68,29 @@
   margin-top: 10px !important;
 }
 
+.sa-sidebar-download-item {
+  margin-top: 6px;
+}
+
+.sa-sidebar-download-btn {
+  background: rgba(0, 83, 192, 0.08) !important;
+  color: #0053c0 !important;
+  border: 1px solid rgba(0, 83, 192, 0.22) !important;
+  font-weight: 700 !important;
+  transition: all 0.2s ease !important;
+  text-decoration: none !important;
+}
+
+.sa-sidebar-download-btn:hover {
+  background: #0053c0 !important;
+  color: #ffffff !important;
+  border-color: #0053c0 !important;
+}
+
+.sa-sidebar-download-btn:hover .sidebar-icon-sa {
+  color: #ffffff !important;
+}
+
 .sa-sidebar .sidebar-brand {
   display: flex;
   align-items: center;
