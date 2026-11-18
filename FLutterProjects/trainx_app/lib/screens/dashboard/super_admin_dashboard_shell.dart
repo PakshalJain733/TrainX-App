@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/theme.dart';
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
+import '../../services/app_update_service.dart';
 import '../login_screen.dart';
 
 class SuperAdminDashboardShell extends StatefulWidget {
@@ -790,6 +791,11 @@ class _SuperAdminDashboardShellState extends State<SuperAdminDashboardShell> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.system_update_rounded, color: Color(0xFF0053C0)),
+            onPressed: () => AppUpdateService.checkAndPrompt(context, showNoUpdateToast: true),
+            tooltip: 'Check for Updates',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Color(0xFF475569)),
             onPressed: _fetchSystemData,
             tooltip: 'Refresh System Status',
@@ -834,6 +840,15 @@ class _SuperAdminDashboardShellState extends State<SuperAdminDashboardShell> {
               );
             }),
             const Spacer(),
+            ListTile(
+              leading: const Icon(Icons.system_update_rounded, color: Color(0xFF0053C0)),
+              title: const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Version 1.1.0', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+              onTap: () {
+                Navigator.pop(context);
+                AppUpdateService.checkAndPrompt(context, showNoUpdateToast: true);
+              },
+            ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626)),

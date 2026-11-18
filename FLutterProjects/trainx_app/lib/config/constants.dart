@@ -36,8 +36,14 @@ class AppConstants {
     }
   }
 
+  // App Build Version Information
+  static const int currentVersionCode = 2;
+  static const String currentVersionName = '1.1.0';
+  static const String fallbackApkUrl = 'https://train-x-app.vercel.app/TrainX.apk';
+
   static String get loginEndpoint => '$baseUrl/auth/login-password';
   static String get sendOtpEndpoint => '$baseUrl/auth/send-otp';
   static String get verifyOtpEndpoint => '$baseUrl/auth/verify-otp';
   static String get profileEndpoint => '$baseUrl/auth/me';
+  static String get appVersionEndpoint => '$baseUrl/app/version';
 }

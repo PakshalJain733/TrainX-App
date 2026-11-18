@@ -4,6 +4,7 @@ import 'dashboard/student_dashboard_shell.dart';
 import 'dashboard/super_admin_dashboard_shell.dart';
 import 'dashboard/admin_dashboard_shell.dart';
 import 'dashboard/trainer_dashboard_shell.dart';
+import '../services/app_update_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -20,6 +21,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _resolveUserRole();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppUpdateService.checkAndPrompt(context);
+      }
+    });
   }
 
   Future<void> _resolveUserRole() async {

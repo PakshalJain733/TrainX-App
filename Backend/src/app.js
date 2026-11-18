@@ -29,6 +29,7 @@ import superadminRoutes from './routes/superadmin.routes.js';
 import c2cRoutes from './routes/c2c.routes.js';
 import featureSwitchRoutes from './routes/featureSwitch.routes.js';
 import systemHealthRoutes from './routes/systemHealth.routes.js';
+import appVersionRoutes from './routes/appVersion.routes.js';
 import { apiMetricsMiddleware } from './services/systemMetrics.service.js';
 
 import { errorHandler } from './middleware/error.middleware.js';
@@ -267,6 +268,10 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Mount Mobile App Version & In-App OTA Update Routes
+app.use('/api/v1/app', appVersionRoutes);
+app.use('/api/app', appVersionRoutes);
 
 // Mount Health & System Monitoring Routes
 app.use('/api/v1/health', systemHealthRoutes);
