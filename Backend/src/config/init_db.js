@@ -1067,71 +1067,9 @@ export async function initializeDatabase() {
     }
 
     // ─── Essential Core Seed Data ───────────────────────────────────────────
-    // A. Ensure default College
-    let defaultCollegeId = 1;
-    try {
-      const [colls] = await conn.query(`SELECT id FROM colleges WHERE code = 'VPPCOE' OR id = 1 LIMIT 1`);
-      if (!colls || colls.length === 0) {
-        const [ins] = await conn.query(`
-          INSERT INTO colleges (name, code, location, city, type, status)
-          VALUES ('Vasantdada Patil Pratishthan College of Engineering', 'VPPCOE', 'Main Campus', 'Mumbai', 'Autonomous', 'Active')
-        `);
-        defaultCollegeId = ins.insertId;
-        console.log(`[DB Init] Seeded default College (ID: ${defaultCollegeId})`);
-      } else {
-        defaultCollegeId = colls[0].id;
-      }
-    } catch (e) {
-      console.warn('[DB Init] College seed notice:', e.message);
-    }
-
-    // B. Ensure default Department
-    let defaultDeptId = 1;
-    try {
-      const [depts] = await conn.query(`SELECT id FROM departments WHERE college_id = ? LIMIT 1`, [defaultCollegeId]);
-      if (!depts || depts.length === 0) {
-        const [ins] = await conn.query(`
-          INSERT INTO departments (college_id, name, code, status)
-          VALUES (?, 'Computer Engineering', 'CE', 'Active')
-        `, [defaultCollegeId]);
-        defaultDeptId = ins.insertId;
-        console.log(`[DB Init] Seeded default Department (ID: ${defaultDeptId})`);
-      } else {
-        defaultDeptId = depts[0].id;
-      }
-    } catch (e) {
-      console.warn('[DB Init] Department seed notice:', e.message);
-    }
-
-    // C. Ensure default Batch
-    try {
-      const [batches] = await conn.query(`SELECT id FROM batches WHERE college_id = ? LIMIT 1`, [defaultCollegeId]);
-      if (!batches || batches.length === 0) {
-        await conn.query(`
-          INSERT INTO batches (college_id, department_id, name, status, year, division)
-          VALUES (?, ?, 'Batch A', 'active', 'TE', 'A')
-        `, [defaultCollegeId, defaultDeptId]);
-        console.log('[DB Init] Seeded default Batch for College');
-      }
-    } catch (e) {
-      console.warn('[DB Init] Batch seed notice:', e.message);
-    }
-
-    // D. Ensure default C2C 2026 Training Program exists
-    try {
-      const [existingProg] = await conn.query(`SELECT id FROM training_programs WHERE code = 'C2C 2026' OR id = 4 LIMIT 1`);
-      if (!existingProg || existingProg.length === 0) {
-        await conn.query(`
-          INSERT INTO training_programs (id, college_id, name, code, short_name, fee_amount, status, start_date, end_date, registration_open_date, registration_close_date, description)
-          VALUES (4, 1, 'Campus to Corporate Training 2026', 'C2C 2026', 'C2C', 3500, 'Open', '2026-07-01', '2026-12-31', '2026-06-01', '2026-07-15', 'Flagship comprehensive placement preparation program covering Full Stack, Aptitude, System Design, and Mock Drives.')
-        `);
-        console.log('[DB Init] Seeded initial C2C 2026 training program');
-      }
-    } catch (e) {
-      console.warn('[DB Init] Training program seed notice:', e.message);
-    }
-
-    // E. Ensure Super Admin Account
+    // No hardcoded constant colleges: Colleges are created dynamically by Super Admin.
+    
+    // Ensure Super Admin Account in database if table is available
     try {
       const superEmail = process.env.SUPER_ADMIN_EMAIL || 'super.admin0987@gmail.com';
       const superPass = process.env.SUPER_ADMIN_PASSWORD;
