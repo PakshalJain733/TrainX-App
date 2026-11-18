@@ -19,6 +19,7 @@ out/
 .vite/
 coverage/
 *.apk
+!Frontend/public/TrainX.apk
 
 # Logs
 logs/
