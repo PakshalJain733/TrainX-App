@@ -256,6 +256,18 @@ app.get('/uploads/:filename', handleUploadsFile);
 app.get('/api/v1/uploads/:filename', handleUploadsFile);
 app.get('/api/uploads/:filename', handleUploadsFile);
 
+// Root welcome & API status endpoint
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    service: 'TrainX Training Portal API',
+    status: 'online',
+    version: '1.0.0',
+    health: '/api/v1/health',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Mount Health & System Monitoring Routes
 app.use('/api/v1/health', systemHealthRoutes);
 app.use('/api/health', systemHealthRoutes);
