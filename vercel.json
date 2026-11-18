@@ -4,15 +4,15 @@
   "rewrites": [
     {
       "source": "/api/v1/:path*",
-      "destination": "https://trainx-6w8m.onrender.com/api/v1/:path*"
+      "destination": "https://trainx-app.onrender.com/api/v1/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://trainx-6w8m.onrender.com/api/:path*"
+      "destination": "https://trainx-app.onrender.com/api/:path*"
     },
     {
       "source": "/uploads/:path*",
-      "destination": "https://trainx-6w8m.onrender.com/uploads/:path*"
+      "destination": "https://trainx-app.onrender.com/uploads/:path*"
     },
     {
       "source": "/(.*)",

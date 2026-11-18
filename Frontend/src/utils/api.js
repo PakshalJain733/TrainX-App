@@ -23,7 +23,7 @@ export const getApiBaseUrl = () => {
   }
 
   // Deployed production API (Render live backend fallback)
-  return "https://trainx-6w8m.onrender.com/api/v1";
+  return "https://trainx-app.onrender.com/api/v1";
 };
 
 export const getBackendOrigin = () => {
@@ -45,7 +45,7 @@ export const getBackendOrigin = () => {
       return "https://api.trainingportal.getflytechnologies.com";
     }
   }
-  return "https://trainx-6w8m.onrender.com";
+  return "https://trainx-app.onrender.com";
 };
 
 // Read the auth token from whichever storage was used at login:
