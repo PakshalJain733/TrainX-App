@@ -1,9 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 class AppConstants {
-  // 1. Live Cloud Server URL (If deployed to Render/Railway/AWS/VPS):
-  // Set this when your backend is hosted online, e.g. 'https://api.trainx.com/api/v1'
-  static const String liveServerUrl = '';
+  // 1. Live Cloud Server URL:
+  static const String liveServerUrl = 'https://trainx-6w8m.onrender.com/api/v1';
 
   // 2. Local Development Settings (Host PC IP for Wi-Fi testing):
   static const String pcWifiIp = '192.168.0.109';
