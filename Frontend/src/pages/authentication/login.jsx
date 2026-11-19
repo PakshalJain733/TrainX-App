@@ -300,16 +300,17 @@ function Login() {
     }
     if (!finalName) finalName = "User";
 
+    const isSameAccount = existingUser.email && serverUser.email &&
+      existingUser.email.toLowerCase() === serverUser.email.toLowerCase();
+
+    const jwtRole = roleFromAccessToken(getAuthToken());
+
     const mergedUser = {
-      ...existingUser,
+      ...(isSameAccount ? existingUser : {}),
       ...serverUser,
+      role: serverUser.role || jwtRole || (isSameAccount ? existingUser.role : null),
       name: finalName,
     };
-
-    if (!mergedUser.role) {
-      const jwtRole = roleFromAccessToken(getAuthToken());
-      if (jwtRole) mergedUser.role = jwtRole;
-    }
 
     sessionStorage.setItem("user", JSON.stringify(mergedUser));
     if (mergedUser.role) {

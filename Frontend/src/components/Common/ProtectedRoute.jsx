@@ -51,11 +51,11 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
     for (const reqRole of allowedRoles) {
       const canonical = String(reqRole).toLowerCase();
       if ((canonical === "superadmin" || canonical === "super_admin") && isSuperAdmin) isAllowed = true;
-      if ((canonical === "admin" || canonical === "college_admin" || canonical === "hod") && (isAdmin || isSuperAdmin)) isAllowed = true;
-      if (canonical === "coordinator" && (isCoordinator || isSuperAdmin)) isAllowed = true;
-      if ((canonical === "trainer" || canonical === "instructor") && (isTrainer || isSuperAdmin)) isAllowed = true;
-      if ((canonical === "mentor" || canonical === "faculty") && (isMentor || isSuperAdmin)) isAllowed = true;
-      if (canonical === "student" && (isStudent || isSuperAdmin)) isAllowed = true;
+      if ((canonical === "admin" || canonical === "college_admin" || canonical === "hod") && isAdmin) isAllowed = true;
+      if (canonical === "coordinator" && isCoordinator) isAllowed = true;
+      if ((canonical === "trainer" || canonical === "instructor") && isTrainer) isAllowed = true;
+      if ((canonical === "mentor" || canonical === "faculty") && isMentor) isAllowed = true;
+      if (canonical === "student" && isStudent) isAllowed = true;
       if (userRole === canonical) isAllowed = true;
     }
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
+import '../../services/app_update_service.dart';
 import '../login_screen.dart';
 
 class TrainerDashboardShell extends StatefulWidget {
@@ -74,8 +75,61 @@ class _TrainerDashboardShellState extends State<TrainerDashboardShell> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.system_update_rounded, color: Color(0xFF0053C0)),
+            onPressed: () => AppUpdateService.checkAndPrompt(context, showNoUpdateToast: true),
+            tooltip: 'Check for Updates',
+          ),
           IconButton(icon: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626)), onPressed: _logout),
         ],
+      ),
+      drawer: Drawer(
+        child: Column(
+          children: [
+            UserAccountsDrawerHeader(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF0F2942), Color(0xFF0053C0)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              currentAccountPicture: const CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Icon(Icons.terminal_rounded, color: Color(0xFF0053C0), size: 36),
+              ),
+              accountName: Text(_name, style: const TextStyle(fontWeight: FontWeight.w800)),
+              accountEmail: Text(roleLabel, style: const TextStyle(color: Color(0xFFCBD5E1))),
+            ),
+            ListTile(
+              leading: const Icon(Icons.dashboard_rounded, color: Color(0xFF0053C0)),
+              title: const Text('Workspace', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0053C0))),
+              selected: true,
+              selectedTileColor: const Color(0xFFEFF6FF),
+              onTap: () => Navigator.pop(context),
+            ),
+            const Spacer(),
+            ListTile(
+              leading: const Icon(Icons.system_update_rounded, color: Color(0xFF0053C0)),
+              title: const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Version 1.1.0', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+              onTap: () {
+                Navigator.pop(context);
+                AppUpdateService.checkAndPrompt(context, showNoUpdateToast: true);
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626)),
+              title: const Text('Log Out', style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.w700)),
+              onTap: () {
+                Navigator.pop(context);
+                _logout();
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF0053C0)))
