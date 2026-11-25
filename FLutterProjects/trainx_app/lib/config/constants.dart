@@ -37,8 +37,8 @@ class AppConstants {
   }
 
   // App Build Version Information
-  static const int currentVersionCode = 2;
-  static const String currentVersionName = '1.1.0';
+  static const int currentVersionCode = 3;
+  static const String currentVersionName = '1.2.0';
   static const String fallbackApkUrl = 'https://train-x-app.vercel.app/TrainX.apk';
 
   static String get loginEndpoint => '$baseUrl/auth/login-password';

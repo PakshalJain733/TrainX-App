@@ -4,17 +4,16 @@ const router = Router();
 
 // Current mobile app release info
 const CURRENT_APP_VERSION = {
-  versionCode: 2,
-  versionName: '1.1.0',
+  versionCode: 3,
+  versionName: '1.2.0',
   minSupportedVersionCode: 1,
   apkUrl: 'https://train-x-app.vercel.app/TrainX.apk',
   directDownloadUrl: 'https://train-x-app.vercel.app/TrainX.apk',
   releaseNotes: [
-    'Super Admin Mobile Command Center (Live Server Health, Colleges Directory, User Controls)',
-    'College Admin Portal (Batches, Approvals, Analytics)',
-    'Trainer & Mentor Workspace',
-    'Direct In-App OTA Update Checker & One-Tap Installer',
-    'Zero-database Super Admin instant login bypass'
+    'Super Admin & Admin dedicated role sidebars and navigation',
+    'Fixed role leakage across Super Admin, College Admin, Trainer dashboards',
+    'Database sync and C2C 2029 batch persistence',
+    'Direct In-App OTA Update Checker & One-Tap Installer'
   ],
   forceUpdate: false,
   publishedAt: new Date().toISOString(),
