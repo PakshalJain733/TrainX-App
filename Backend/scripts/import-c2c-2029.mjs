@@ -149,8 +149,16 @@ async function run() {
     };
     await conn.beginTransaction();
 
-    const college = (await conn.query('SELECT id FROM colleges WHERE code = ?', [COLLEGE_CODE]))[0][0];
-    if (!college) throw new Error(`College code ${COLLEGE_CODE} not found in DB`);
+    let college = (await conn.query('SELECT id FROM colleges WHERE code = ? OR code = "VPPCOE" OR code = "PVPPCOE"', [COLLEGE_CODE]))[0][0];
+    if (!college) {
+      const [ins] = await conn.query('INSERT INTO colleges (name, code, location, status) VALUES (?, ?, ?, ?)', [
+        'Vasantdada Patil Pratishthan College of Engineering',
+        COLLEGE_CODE,
+        'Mumbai',
+        'Active'
+      ]);
+      college = { id: ins.insertId };
+    }
     const collegeId = college.id;
 
     const deptIds = {};
@@ -292,7 +300,15 @@ async function run() {
       for (const s of students) if (s.branchCode === code && mentorMeta.get(s.mentorKey)) mentorIds.add(mentorMeta.get(s.mentorKey).id);
       for (const mid of mentorIds) {
         const existing = (await conn.query('SELECT id FROM mentor_assignments WHERE mentor_id = ? AND batch_id = ?', [mid, batchId]))[0][0];
-        if (!existing) await conn.query('INSERT INTO mentor_assignments (mentor_id, batch_id) VALUES (?, ?)', [mid, batchId]);
+        const meta = Array.from(mentorMeta.values()).find((m) => m.id === mid);
+        const mentorName = meta?.name || 'Mentor';
+        if (!existing) {
+          try {
+            await conn.query('INSERT INTO mentor_assignments (mentor_id, batch_id, mentor_name, student_id) VALUES (?, ?, ?, ?)', [mid, batchId, mentorName, '']);
+          } catch (_) {
+            await conn.query('INSERT INTO mentor_assignments (mentor_id, batch_id) VALUES (?, ?)', [mid, batchId]);
+          }
+        }
       }
       const cnt = (await conn.query('SELECT COUNT(*) c FROM student_batches WHERE batch_id = ?', [batchId]))[0][0].c;
       await conn.query('UPDATE batches SET students = ? WHERE id = ?', [cnt, batchId]);
@@ -360,6 +376,9 @@ try {
   } catch (e) {
     if (!/Duplicate/i.test(e.message)) throw e;
   }
+  try {
+    await query(`ALTER TABLE mentor_assignments MODIFY COLUMN mentor_name VARCHAR(100) NULL, MODIFY COLUMN student_id VARCHAR(100) NULL`);
+  } catch (_) {}
   await run();
 } catch (err) {
   console.error('Import failed:', err.message);

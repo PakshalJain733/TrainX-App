@@ -1,10 +1,21 @@
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Ensure .env is loaded regardless of process working directory
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config();
 
 export async function initializeDatabase() {
   try {
     const dbHost = process.env.DB_HOST || 'localhost';
-    const dbPort = parseInt(process.env.DB_PORT || '3307', 10);
+    const dbPort = parseInt(process.env.DB_PORT || '3306', 10);
     const dbUser = process.env.DB_USER || 'root';
     const dbPassword = process.env.DB_PASSWORD || '';
     const dbName = process.env.DB_NAME || 'training_portal_db';

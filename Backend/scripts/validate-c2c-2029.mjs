@@ -1,8 +1,6 @@
-import mysql from 'mysql2/promise';
-import { config } from '../src/config/env.js';
+import { pool } from '../src/config/db.js';
 
-const conn = await mysql.createConnection({ host: config.db.host, port: config.db.port, user: config.db.user, password: config.db.password, database: config.db.database, connectTimeout: config.db.connectTimeout });
-const q = async (sql, p = []) => (await conn.query(sql, p))[0];
+const q = async (sql, p = []) => (await pool.query(sql, p))[0];
 const out = [];
 const expect = (label, got, want) => { const pass = got === want; out.push(`${pass ? 'PASS' : 'FAIL'} | ${label}: got=${got} expected=${want}`); };
 
@@ -59,7 +57,7 @@ expect('total depts college 1 (no dup)', depts.length, 6);
 const prog = (await q(`SELECT COUNT(*) c FROM training_programs WHERE college_id=1 AND code='C2C 2029'`))[0].c;
 expect('training_program C2C 2029 (single)', prog, 1);
 const collegeC = (await q(`SELECT code FROM colleges`)).map(r => r.code);
-expect('PVPPCOE college not duplicated', collegeC.filter(c => c === 'PVPPCOE').length, 1);
+expect('PVPPCOE/VPPCOE college not duplicated', collegeC.filter(c => c === 'PVPPCOE' || c === 'VPPCOE').length, 1);
 
 // Orphan checks
 const orphanPay = (await q(`SELECT COUNT(*) c FROM training_enrollments te LEFT JOIN users u ON u.id=te.student_user_id WHERE u.id IS NULL`))[0].c;
@@ -74,4 +72,4 @@ expect('mentor_assignments (mentor,batch) rows', ma >= 15, true);
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;
 console.log(`\nVALIDATION RESULT: ${failed === 0 ? 'ALL PASS' : `${failed} FAILED`}`);
-await conn.end();
+await pool.end();
